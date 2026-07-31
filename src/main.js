@@ -58,6 +58,35 @@ function maxPaymentMonths() {
   return Math.max(3, ...scopedEnrollments().filter(x => x.status !== 'disponible').map(monthsFor))
 }
 
+function monthlyPaymentState(enrollment, month) {
+  const progress = monthlyProgress(enrollment, month)
+  if (progress.remaining === 0) return { label: 'Payé', className: 'ok' }
+  return { label: progress.paid > 0 ? 'Partiel' : 'Non payé', className: progress.paid > 0 ? 'warning' : 'due' }
+}
+
+function receiptNumber(payment) {
+  return `BEVA-${new Date(payment.paid_at).getFullYear()}-${String(payment.id || '').replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+function receiptHtml(payment) {
+  const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+  const student = enrollment && studentFor(enrollment)
+  const formation = enrollment && formationFor(enrollment)
+  const paidBefore = enrollmentPayments(enrollment?.id).filter(x => x.id !== payment.id && new Date(x.paid_at) <= new Date(payment.paid_at)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
+  const total = enrollment ? financialStatus(enrollment).due : 0
+  const remaining = Math.max(0, total - paidBefore - Number(payment.amount || 0))
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Reçu ${esc(receiptNumber(payment))}</title><style>body{font-family:Arial,sans-serif;color:#14243a;margin:0;padding:32px}.receipt{max-width:720px;margin:auto;border:1px solid #d7e0eb;padding:34px}.head{display:flex;justify-content:space-between;border-bottom:3px solid #0c417d;padding-bottom:18px}.brand{font-weight:900;font-size:28px;color:#0c417d}.muted{color:#60738d}.number{font-weight:700}.line{display:flex;justify-content:space-between;gap:24px;border-bottom:1px solid #e4ebf3;padding:11px 0}.amount{font-weight:900;font-size:26px;color:#0c417d;margin:25px 0}.footer{margin-top:35px;font-size:12px;color:#60738d}@media print{body{padding:0}.receipt{border:0}}</style></head><body><main class="receipt"><div class="head"><div><div class="brand">BEVA</div><div class="muted">Bénin Vivi Académie</div></div><div><strong>REÇU DE PAIEMENT</strong><div class="number">N° ${esc(receiptNumber(payment))}</div></div></div><div class="line"><span>Étudiant</span><strong>${esc(student ? `${student.last_name} ${student.first_name}` : '—')}</strong></div><div class="line"><span>Dossier</span><strong>${esc(enrollment?.dossier_code || '—')}</strong></div><div class="line"><span>Formation</span><strong>${esc(formation?.name || '—')}</strong></div><div class="line"><span>Date</span><strong>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</strong></div><div class="line"><span>Moyen de paiement</span><strong>${esc(payment.method.replace('_', ' '))}</strong></div><div class="line"><span>Objet</span><strong>${esc(paymentMonthLabel(payment.billing_month))}${payment.installment ? ` · Tranche ${payment.installment}` : ''}</strong></div><p class="amount">Montant reçu : ${money(payment.amount)}</p><div class="line"><span>Total de la formation</span><strong>${money(total)}</strong></div><div class="line"><span>Reste après ce versement</span><strong>${money(remaining)}</strong></div>${payment.reference ? `<div class="line"><span>Référence</span><strong>${esc(payment.reference)}</strong></div>` : ''}<p class="footer">Ce reçu est conservé dans BEVA Gestion. Pour le télécharger, choisissez « Enregistrer au format PDF » dans la fenêtre d’impression.</p></main><script>window.addEventListener('load',()=>window.print())<\/script></body></html>`
+}
+
+function downloadReceipt(paymentId) {
+  const payment = state.payments.find(x => x.id === paymentId)
+  if (!payment) return toast('Reçu introuvable.', true)
+  const receipt = window.open('', '_blank', 'noopener,noreferrer')
+  if (!receipt) return toast('Autorisez les fenêtres surgissantes pour télécharger le reçu.', true)
+  receipt.document.write(receiptHtml(payment))
+  receipt.document.close()
+}
+
 function toast(message, bad = false) {
   const el = document.createElement('div')
   el.className = `toast ${bad ? 'bad' : ''}`
@@ -290,9 +319,11 @@ function paymentPanel() {
   const allEnrollments = scopedEnrollments().filter(enrolledEnrollment)
   // The monthly follow-up deliberately excludes inactive and abandoned dossiers.
   const followUpEnrollments = allEnrollments.filter(activeEnrollment)
-  const displayed = selectedMonth
-    ? followUpEnrollments.filter(x => monthlyProgress(x, selectedMonth).remaining > 0)
-    : allEnrollments
+  const displayed = state.paymentMonth === 'settled'
+    ? followUpEnrollments.filter(x => financialStatus(x).due > 0 && financialStatus(x).remaining === 0)
+    : selectedMonth
+      ? followUpEnrollments.filter(x => monthlyProgress(x, selectedMonth).remaining > 0)
+      : allEnrollments
   const enrollmentRows = displayed.map(enrollment => {
     const student = studentFor(enrollment)
     const formation = formationFor(enrollment)
@@ -302,11 +333,9 @@ function paymentPanel() {
     // "Reste dû" always stays the outstanding balance over the full 3 months.
     // The monthly status, however, is evaluated against that month's cumulative target.
     const remaining = summary.remaining
-    const monthShortfall = selectedMonth && progress.trackable ? progress.remaining : summary.remaining
-    const label = selectedMonth && progress.trackable
-      ? (monthShortfall === 0 ? 'Payé' : summary.paid > 0 ? 'Partiel' : 'Non payé')
-      : summary.label
-    const className = monthShortfall === 0 ? 'ok' : (summary.paid > 0 ? 'warning' : 'due')
+    const monthStatus = selectedMonth && progress.trackable ? monthlyPaymentState(enrollment, selectedMonth) : null
+    const label = monthStatus?.label || summary.label
+    const className = monthStatus?.className || summary.className
     return `<tr><td class="code">${esc(enrollment.dossier_code)}</td><td><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong></td>
       <td>${esc(formation?.name || '—')}</td><td><span class="badge ${enrollment.scholarship_status ? 'ok' : ''}">${enrollment.scholarship_status ? 'Boursier' : 'Non boursier'}</span></td>
       <td>${paidTarget}</td><td>${money(remaining)}</td><td>${money(summary.due)}</td>
@@ -318,14 +347,20 @@ function paymentPanel() {
     const remaining = enrollment ? financialStatus(enrollment).remaining : 0
     return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
       <td>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
-      <td>${money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
+      <td>${money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td><td><button class="link-btn receipt-payment" data-id="${payment.id}">Reçu PDF</button></td></tr>`
   }).join('')
   const monthOptions = Array.from({ length: maxPaymentMonths() }, (_, i) => i + 1).map(month => `<option value="${month}" ${String(month) === state.paymentMonth ? 'selected' : ''}>Mois ${month} — impayés à cette échéance</option>`).join('')
-  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p></div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}</select></label></div><div class="table-wrap">
+  const monthCounts = selectedMonth ? followUpEnrollments.reduce((counts, enrollment) => {
+    const status = monthlyPaymentState(enrollment, selectedMonth).label
+    counts[status] += 1
+    return counts
+  }, { 'Payé': 0, 'Partiel': 0, 'Non payé': 0 }) : null
+  const monthlySummary = monthCounts ? `<div class="payment-summary"><strong>Mois ${selectedMonth} :</strong><span class="badge ok">${monthCounts.Payé} payé${monthCounts.Payé > 1 ? 's' : ''}</span><span class="badge warning">${monthCounts.Partiel} partiel${monthCounts.Partiel > 1 ? 's' : ''}</span><span class="badge due">${monthCounts['Non payé']} non payé${monthCounts['Non payé'] > 1 ? 's' : ''}</span></div>` : ''
+  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="table-wrap">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
-    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th></tr></thead>
+    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement enregistré.</div>'}</div></div>`
 }
 
@@ -360,6 +395,7 @@ function bindShell() {
   document.querySelectorAll('.edit-intake').forEach(button => button.addEventListener('click', () => editIntakeModal(button.dataset.id)))
   document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
   document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
+  document.querySelectorAll('.receipt-payment').forEach(button => button.addEventListener('click', () => downloadReceipt(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
     state.paymentMonth = 'all'
@@ -514,7 +550,7 @@ function manageStudentModal(studentId) {
         <label>Mode de suivi<select class="slot-mode" data-id="${slot.id}"><option value="presentiel" ${slot.learning_mode === 'presentiel' ? 'selected' : ''}>Présentiel</option><option value="en_ligne" ${slot.learning_mode === 'en_ligne' ? 'selected' : ''}>En ligne</option></select></label>
         <label>Bourse<select class="slot-scholarship" data-id="${slot.id}"><option value="false" ${!slot.scholarship_status ? 'selected' : ''}>Non boursier</option><option value="true" ${slot.scholarship_status ? 'selected' : ''}>Boursier</option></select></label>
         <div class="fee-summary"><span>Frais totaux</span><strong class="slot-fee-display" data-id="${slot.id}">${money(totalFee)}</strong><small>${slot.scholarship_status ? 'Bourse BEVA' : 'Tarif standard BEVA'}</small></div>
-      </div><div class="dossier-actions"><button class="primary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : ''}</div></article>`
+      </div><div class="dossier-actions"><button class="primary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : '<button class="secondary save-slot" data-pay-after="true" data-id="' + slot.id + '">Enregistrer + paiement</button>'}</div></article>`
   }).join('')
   const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option><option value="archive" ${student.status === 'archive' ? 'selected' : ''}>Archivé</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
@@ -532,21 +568,29 @@ function manageStudentModal(studentId) {
   }))
   modal.querySelectorAll('.save-slot').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.id
+    const currentSlot = slots.find(item => item.id === id)
+    if (!currentSlot) return toast('Dossier introuvable.', true)
     const formationId = modal.querySelector(`.slot-formation[data-id="${id}"]`).value || null
     const status = modal.querySelector(`.slot-status[data-id="${id}"]`).value
     const scholarship = modal.querySelector(`.slot-scholarship[data-id="${id}"]`).value === 'true'
     button.disabled = true
+    if (button.dataset.payAfter === 'true' && !formationId) {
+      toast('Choisissez d’abord une formation pour pouvoir enregistrer un paiement.', true)
+      button.disabled = false
+      return
+    }
     const { data: updated, error } = await supabase.from('enrollments').update({
       formation_id: formationId, agreed_fee: feeFor(scholarship),
-      monthly_fee: monthlyFeeFor({ ...slot, scholarship_status: scholarship }),
+      monthly_fee: monthlyFeeFor({ ...currentSlot, formation_id: formationId, scholarship_status: scholarship }),
       learning_mode: modal.querySelector(`.slot-mode[data-id="${id}"]`).value,
       scholarship_status: scholarship,
       status: formationId ? (status === 'disponible' ? 'inscrit' : status) : 'disponible',
-      enrolled_at: formationId ? (slot.enrolled_at || today()) : null
+      enrolled_at: formationId ? (currentSlot.enrolled_at || today()) : null
     }).eq('id', id).select('id,status').single()
     if (error || !updated) { toast(error?.message || 'Le dossier n’a pas été enregistré.', true); button.disabled = false; return }
     modal.remove()
-    await refresh('Dossier mis à jour.')
+    await refresh(button.dataset.payAfter === 'true' ? 'Dossier enregistré. Ajoutez maintenant le versement.' : 'Dossier mis à jour.')
+    if (button.dataset.payAfter === 'true') paymentModal(id)
   }))
   modal.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => {
     modal.remove()
@@ -585,10 +629,11 @@ function paymentModal(enrollmentId) {
     if (summary.due > 0 && data.amount > summary.remaining) return toast(`Le versement dépasse le reste à payer (${money(summary.remaining)}).`, true)
     if (!data.reference) data.reference = null
     if (!data.notes) data.notes = null
-    const { error } = await supabase.from('payments').insert(data)
-    if (error) return toast(error.message, true)
+    const { data: created, error } = await supabase.from('payments').insert(data).select().single()
+    if (error || !created) return toast(error?.message || 'Le paiement n’a pas été enregistré.', true)
     modal.remove()
     await refresh('Paiement enregistré.')
+    setTimeout(() => downloadReceipt(created.id), 100)
   })
 }
 
