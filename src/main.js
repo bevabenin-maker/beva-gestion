@@ -64,8 +64,11 @@ function financialStatus(enrollment) {
   return { paid, due, remaining, label: due > 0 && remaining === 0 ? 'Soldé' : paid > 0 ? 'Partiel' : 'Non payé', className: due > 0 && remaining === 0 ? 'ok' : paid > 0 ? 'warning' : 'due' }
 }
 
-const formationFor = enrollment => state.formations.find(x => x.id === enrollment.formation_id)
-const studentFor = enrollment => state.students.find(x => x.id === enrollment.student_id)
+// Empty slots ("Disponible") and pending payments do not always have a
+// formation or an enrollment yet. Keep every lookup null-safe so one partial
+// record cannot prevent the whole staff application from opening.
+const formationFor = enrollment => enrollment?.formation_id ? state.formations.find(x => x.id === enrollment.formation_id) : null
+const studentFor = enrollment => enrollment?.student_id ? state.students.find(x => x.id === enrollment.student_id) : null
 const monthsFor = enrollment => Math.max(1, Number(formationFor(enrollment)?.duration_months || 3))
 // A debt is actionable only while both the student's record and this formation
 // are active. Payments remain part of the history whatever their later status.
@@ -309,6 +312,15 @@ function dashboardStats() {
   return { assigned: assigned.length, active: active.length, activeStudents, abandonedStudents, abandonedDossiers, abandoned: abandonedStudents + abandonedDossiers, paid, balance }
 }
 
+function safeSectionContent(render) {
+  try {
+    return render()
+  } catch (error) {
+    console.error('Erreur de section BEVA Gestion', error)
+    return `<div class="panel"><div class="empty"><strong>Cette section n’a pas pu s’afficher.</strong><br><small>${esc(error?.message || 'Erreur inconnue')}</small></div></div>`
+  }
+}
+
 function shellView() {
   const stats = dashboardStats()
   app.innerHTML = `
@@ -344,12 +356,12 @@ function shellView() {
             <div class="card"><div class="label">Reste à payer</div><div class="value">${money(stats.balance)}</div></div>
             <div class="card"><div class="label">Paiements en attente</div><div class="value">${pendingPayments().length}</div></div>
           </div>
-          ${studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8))}
+          ${safeSectionContent(() => studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8)))}
         </section>
-        <section id="students" class="section">${studentPanel('Tous les étudiants', scopedStudents(), true)}</section>
-        <section id="payments" class="section">${paymentPanel()}</section>
-        <section id="formations" class="section">${formationPanel()}</section>
-        <section id="intakes" class="section">${intakePanel()}</section>
+        <section id="students" class="section">${safeSectionContent(() => studentPanel('Tous les étudiants', scopedStudents(), true))}</section>
+        <section id="payments" class="section">${safeSectionContent(paymentPanel)}</section>
+        <section id="formations" class="section">${safeSectionContent(formationPanel)}</section>
+        <section id="intakes" class="section">${safeSectionContent(intakePanel)}</section>
       </main>
     </div>`
   bindShell()
@@ -1080,21 +1092,48 @@ async function refresh(message) {
   }
 }
 
+function applicationErrorView(error) {
+  console.error('Erreur d’affichage BEVA Gestion', error)
+  app.innerHTML = `
+    <div class="login-page">
+      <section class="login-brand"><div class="brand-mark">BEVA</div><h1>Connexion réussie.</h1><p>Votre compte reste connecté et aucune donnée n’a été modifiée.</p></section>
+      <section class="login-panel"><div class="login-card">
+        <h2>Chargement interrompu</h2>
+        <p class="muted">Réessayez le chargement. Le détail ci-dessous permet d’identifier le problème sans vous déconnecter.</p>
+        <p class="error">${esc(error?.message || 'Erreur inconnue')}</p>
+        <div class="modal-actions"><button id="retry-app" class="primary" type="button">Réessayer</button><button id="logout" class="secondary" type="button">Déconnexion</button></div>
+      </div></section>
+    </div>`
+  document.querySelector('#retry-app').addEventListener('click', startFromAuthenticatedSession)
+  document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
+}
+
+async function startFromAuthenticatedSession() {
+  try {
+    await loadData()
+    if (!state.staff?.active) {
+      await supabase.auth.signOut()
+      loginView()
+      const el = document.querySelector('#login-error')
+      if (el) el.textContent = 'Ce compte ne dispose pas d’un accès actif au personnel BEVA.'
+      return
+    }
+    shellView()
+  } catch (error) {
+    // A data or rendering error must never invalidate a valid staff session.
+    applicationErrorView(error)
+  }
+}
+
+let startInFlight = null
 async function start(session) {
   if (!session) return loginView()
   state.user = session.user
-  try {
-    await loadData()
-    if (!state.staff?.active) throw new Error('Ce compte ne dispose pas d’un accès actif au personnel BEVA.')
-    shellView()
-  } catch (error) {
-    await supabase.auth.signOut()
-    loginView()
-    setTimeout(() => {
-      const el = document.querySelector('#login-error')
-      if (el) el.textContent = error.message
-    })
-  }
+  // getSession() and SIGNED_IN can fire almost together. Reuse the same boot
+  // promise instead of launching two parallel data loads with the same session.
+  if (startInFlight) return startInFlight
+  startInFlight = startFromAuthenticatedSession().finally(() => { startInFlight = null })
+  return startInFlight
 }
 
 const isRecovery = new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery'
