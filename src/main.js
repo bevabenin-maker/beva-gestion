@@ -685,7 +685,7 @@ function manageStudentModal(studentId) {
   }).join('')
   const studentPayments = state.payments.filter(payment => slots.some(slot => slot.id === payment.enrollment_id))
   const deleteButton = canDeleteStudents() ? '<button id="delete-student-from-modal" class="danger" type="button">Supprimer cet élève</button>' : ''
-  const pendingButton = studentPayments.length ? '<button id="move-student-to-pending" class="secondary" type="button">Mettre ses paiements en attente</button>' : ''
+  const pendingButton = studentPayments.length && canDeleteStudents() ? '<button id="move-student-to-pending" class="secondary" type="button">Mettre ses paiements en attente</button>' : ''
   const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button>${pendingButton}${deleteButton}</div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
     const button = event.currentTarget
