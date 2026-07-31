@@ -323,6 +323,15 @@ function dashboardStats() {
   return { assigned: assigned.length, active: active.length, activeStudents, abandonedStudents, abandonedDossiers, abandoned: abandonedStudents + abandonedDossiers, paid, balance }
 }
 
+function safeSectionContent(render) {
+  try {
+    return render()
+  } catch (error) {
+    console.error('Erreur de section BEVA Gestion', error)
+    return `<div class="panel"><div class="empty"><strong>Cette section doit être réparée.</strong><br><small>${esc(error?.message || 'Erreur inconnue')}</small></div></div>`
+  }
+}
+
 function shellView() {
   const stats = dashboardStats()
   app.innerHTML = `
@@ -359,12 +368,12 @@ function shellView() {
             <div class="card"><div class="label">Paiements en attente</div><div class="value">${pendingPayments().length}</div></div>
           </div>
           <p class="financial-note">Les nouveaux étudiants sont enregistrés avec 4 formations <strong>Disponibles</strong>. Ils ne créent aucun montant attendu tant qu’une formation n’est pas confirmée.</p>
-          ${studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8))}
+          ${safeSectionContent(() => studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8)))}
         </section>
-        <section id="students" class="section">${studentPanel('Tous les étudiants', scopedStudents(), true)}</section>
-        <section id="payments" class="section">${paymentPanel()}</section>
-        <section id="formations" class="section">${formationPanel()}</section>
-        <section id="intakes" class="section">${intakePanel()}</section>
+        <section id="students" class="section">${safeSectionContent(() => studentPanel('Tous les étudiants', scopedStudents(), true))}</section>
+        <section id="payments" class="section">${safeSectionContent(paymentPanel)}</section>
+        <section id="formations" class="section">${safeSectionContent(formationPanel)}</section>
+        <section id="intakes" class="section">${safeSectionContent(intakePanel)}</section>
       </main>
     </div>`
   bindShell()
