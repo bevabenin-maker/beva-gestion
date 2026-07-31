@@ -26,10 +26,11 @@ const scopedEnrollments = () => {
 }
 const scopedPayments = () => {
   const ids = new Set(scopedEnrollments().map(x => x.id))
-  return state.payments.filter(x => ids.has(x.enrollment_id))
+  return state.payments.filter(x => ids.has(x.enrollment_id) && !x.cancelled_at)
 }
-const pendingPayments = () => state.payments.filter(x => x.payment_context === 'pending')
-const enrollmentPayments = enrollmentId => state.payments.filter(x => x.enrollment_id === enrollmentId)
+const pendingPayments = () => state.payments.filter(x => x.payment_context === 'pending' && !x.cancelled_at)
+const enrollmentPayments = enrollmentId => state.payments.filter(x => x.enrollment_id === enrollmentId && !x.cancelled_at)
+const paymentIsCancelled = payment => Boolean(payment.cancelled_at)
 function financialStatus(enrollment) {
   const paid = enrollmentPayments(enrollment.id).reduce((sum, item) => sum + Number(item.amount || 0), 0)
   // `agreed_fee` can be lower for a returning learner who only resumes the
@@ -90,11 +91,12 @@ function receiptHtml(payment) {
   const payerName = pending ? `${payment.pending_last_name || ''} ${payment.pending_first_name || ''}`.trim() : (student ? `${student.last_name} ${student.first_name}` : '—')
   const dossier = pending ? 'En attente d’affectation' : (enrollment?.dossier_code || '—')
   const status = pending ? (payment.pending_scholarship_status ? 'Boursier' : 'Standard') : (enrollment?.scholarship_status ? 'Boursier' : 'Standard')
-  const totals = pending ? `<section class="totals"><div class="total-row"><span>Situation</span><b>Paiement conservé en attente d’affectation</b></div></section>` : `<section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section>`
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reçu ${esc(receiptNumber(payment))}</title><style>
+  const cancelled = paymentIsCancelled(payment)
+  const totals = cancelled ? `<section class="totals"><div class="total-row remaining"><span>Statut</span><b>VERSEMENT ANNULÉ — non comptabilisé</b></div><div class="total-row"><span>Motif</span><b>${esc(payment.cancellation_reason || 'Non précisé')}</b></div></section>` : pending ? `<section class="totals"><div class="total-row"><span>Situation</span><b>Paiement conservé en attente d’affectation</b></div></section>` : `<section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section>`
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${cancelled ? 'Annulation' : 'Reçu'} ${esc(receiptNumber(payment))}</title><style>
     *{box-sizing:border-box} body{margin:0;background:#edf2f8;font-family:Arial,Helvetica,sans-serif;color:#14243a}.toolbar{position:sticky;top:0;z-index:2;display:flex;justify-content:center;padding:14px;background:#071a33}.toolbar button{border:0;border-radius:8px;padding:11px 18px;background:#d4af37;color:#071a33;font-weight:800;cursor:pointer}.receipt{width:210mm;min-height:297mm;margin:24px auto;padding:17mm 16mm 13mm;background:white;box-shadow:0 2px 18px #60738d55;position:relative}.top{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;border-bottom:5px solid #0b3d91;padding-bottom:12px}.logo{width:205px;max-width:100%;height:auto;display:block}.receipt-title{text-align:right;color:#0b3d91}.receipt-title h1{font-size:23px;margin:0 0 8px;letter-spacing:.3px}.receipt-title p{margin:0;color:#344a67;font-size:12px}.receipt-number{display:inline-block;margin-top:8px;padding:7px 10px;background:#e8f1fb;color:#0b3d91;font-weight:800;font-size:12px}.bar{margin-top:15px;padding:7px 10px;color:white;background:#0b3d91;font-size:12px;font-weight:800}.info{display:grid;grid-template-columns:1fr 1fr;border:1px solid #cbd7e5;border-top:0}.field{display:grid;grid-template-columns:128px 1fr;gap:8px;min-height:35px;padding:9px 10px;border-top:1px solid #d6e0eb;font-size:12px}.field:nth-child(odd){border-right:1px solid #d6e0eb}.field b{color:#405574}.field strong{color:#102c50}.payment-box{margin-top:20px;border:1px solid #b9d8c5}.payment-box h2{margin:0;padding:8px 10px;background:#176b42;color:#fff;font-size:12px;text-align:center}.payment-row{display:grid;grid-template-columns:1.4fr .75fr .75fr 1fr;min-height:40px}.payment-row>*{padding:11px 9px;border-right:1px solid #c7dfd0;font-size:12px}.payment-row>*:last-child{border:0}.payment-head{font-weight:800;color:white;background:#17477e}.payment-detail{background:#dcf5e8}.payment-detail strong{color:#176b42}.amount{display:flex;justify-content:space-between;align-items:center;margin-top:19px;padding:10px 13px;color:white;background:#0b3d91;font-weight:800;font-size:13px}.amount b{font-size:22px;color:#0b3d91;background:#fff7df;padding:4px 15px}.totals{margin-top:20px;border:1px solid #cbd7e5}.total-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d6e0eb;font-size:12px}.total-row:last-child{border:0}.total-row b{color:#0b3d91}.total-row.remaining{background:#fff0ef}.total-row.remaining b{color:#b42318}.notice{margin-top:19px;padding:7px 10px;color:white;background:#0b3d91;text-align:center;font-size:10px;font-weight:700}.stamp-wrap{text-align:center;margin-top:21px}.stamp{width:120px;height:auto;opacity:.96}.signature{font-size:11px;color:#405574;margin-top:3px}.contact{margin-top:14px;text-align:center;color:#61738a;font-size:10px}@page{size:A4;margin:0}@media print{body{background:white}.toolbar{display:none}.receipt{margin:0;box-shadow:none;width:210mm;min-height:297mm}}
     @media(max-width:760px){.receipt{width:100%;min-height:0;margin:0;padding:22px 16px}.top{grid-template-columns:1fr}.receipt-title{text-align:left}.payment-row{grid-template-columns:1fr 1fr}.payment-head>*:nth-child(n+3),.payment-detail>*:nth-child(n+3){border-top:1px solid #c7dfd0}.field{grid-template-columns:100px 1fr}.field:nth-child(odd){border-right:0}.info{grid-template-columns:1fr}.amount{align-items:flex-start;gap:10px}.amount b{font-size:17px}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Télécharger / imprimer le PDF</button></div><main class="receipt"><section class="top"><img class="logo" src="${receiptAsset('beva-logo.png')}" alt="BEVA"><div class="receipt-title"><h1>REÇU DE PAIEMENT</h1><p>Date : <b>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</b></p><div class="receipt-number">N° ${esc(receiptNumber(payment))}</div></div></section><div class="bar">INFORMATIONS DE L'ÉTUDIANT(E)</div><section class="info"><div class="field"><b>Nom et prénom</b><strong>${esc(payerName)}</strong></div><div class="field"><b>N° de dossier</b><strong>${esc(dossier)}</strong></div><div class="field"><b>Formation</b><strong>${esc(formation?.name || 'Non précisée')}</strong></div><div class="field"><b>Statut tarifaire</b><strong>${status}</strong></div></section><section class="payment-box"><h2>DÉTAIL DU VERSEMENT</h2><div class="payment-row payment-head"><b>Description</b><b>Montant reçu</b><b>Mode</b><b>Référence</b></div><div class="payment-row payment-detail"><strong>${esc(pending ? 'Paiement en attente d’affectation' : paymentObject)}</strong><strong>${money(payment.amount)}</strong><span>${esc(paymentMethodLabel(payment.method))}</span><span>${esc(payment.reference || '—')}</span></div></section><div class="amount"><span>MONTANT DE CE REÇU (FCFA)</span><b>${money(payment.amount)}</b></div>${totals}<p class="notice">Ce reçu tient lieu de preuve de paiement. Conservez-le précieusement. - BEVA, Abomey-Calavi, Bénin</p><div class="stamp-wrap"><img class="stamp" src="${receiptAsset('beva-stamp.png')}" alt="Cachet BEVA"><div class="signature">La Direction</div></div><p class="contact">BEVA - Bénin Vivi Académie - Abomey-Calavi, Bénin</p></main></body></html>`
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Télécharger / imprimer le PDF</button></div><main class="receipt"><section class="top"><img class="logo" src="${receiptAsset('beva-logo.png')}" alt="BEVA"><div class="receipt-title"><h1>${cancelled ? 'ANNULATION DE VERSEMENT' : 'REÇU DE PAIEMENT'}</h1><p>Date : <b>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</b></p><div class="receipt-number">N° ${esc(receiptNumber(payment))}</div></div></section><div class="bar">INFORMATIONS DE L'ÉTUDIANT(E)</div><section class="info"><div class="field"><b>Nom et prénom</b><strong>${esc(payerName)}</strong></div><div class="field"><b>N° de dossier</b><strong>${esc(dossier)}</strong></div><div class="field"><b>Formation</b><strong>${esc(formation?.name || 'Non précisée')}</strong></div><div class="field"><b>Statut tarifaire</b><strong>${status}</strong></div></section><section class="payment-box"><h2>DÉTAIL DU VERSEMENT</h2><div class="payment-row payment-head"><b>Description</b><b>Montant reçu</b><b>Mode</b><b>Référence</b></div><div class="payment-row payment-detail"><strong>${esc(pending ? 'Paiement en attente d’affectation' : paymentObject)}</strong><strong>${money(payment.amount)}</strong><span>${esc(paymentMethodLabel(payment.method))}</span><span>${esc(payment.reference || '—')}</span></div></section><div class="amount"><span>MONTANT DU VERSEMENT (FCFA)</span><b>${money(payment.amount)}</b></div>${totals}<p class="notice">${cancelled ? 'Ce document confirme l’annulation du versement indiqué.' : 'Ce reçu tient lieu de preuve de paiement. Conservez-le précieusement.'} - BEVA, Abomey-Calavi, Bénin</p><div class="stamp-wrap"><img class="stamp" src="${receiptAsset('beva-stamp.png')}" alt="Cachet BEVA"><div class="signature">La Direction</div></div><p class="contact">BEVA - Bénin Vivi Académie - Abomey-Calavi, Bénin</p></main></body></html>`
 }
 
 function downloadReceipt(paymentId) {
@@ -364,13 +366,17 @@ function paymentPanel() {
       <td>${paidTarget}</td><td>${money(remaining)}</td><td>${money(summary.due)}</td>
       <td><span class="badge ${className}">${label}</span></td><td><button class="link-btn pay-slot" data-id="${enrollment.id}">Ajouter paiement</button></td></tr>`
   }).join('')
-  const rows = scopedPayments().map(payment => {
+  const rows = state.payments.filter(payment => {
+    const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+    return enrollment && scopedEnrollments().some(x => x.id === enrollment.id)
+  }).map(payment => {
     const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
     const student = enrollment && studentFor(enrollment)
     const remaining = enrollment ? financialStatus(enrollment).remaining : 0
+    const cancelled = paymentIsCancelled(payment)
     return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
       <td>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
-      <td>${money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td><td><button class="link-btn receipt-payment" data-id="${payment.id}">Reçu PDF</button></td></tr>`
+      <td>${cancelled ? '—' : money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(paymentMethodLabel(payment.method))}</span></td><td>${cancelled ? `<span class="badge due">Annulé</span><small class="legacy-code">${esc(payment.cancellation_reason || 'Sans motif')}</small>` : esc(payment.reference || '—')}</td><td class="row-actions"><button class="link-btn receipt-payment" data-id="${payment.id}">${cancelled ? 'Document' : 'Reçu PDF'}</button>${!cancelled && canDeleteStudents() ? `<button class="danger cancel-payment" data-id="${payment.id}">Annuler</button>` : ''}</td></tr>`
   }).join('')
   const monthOptions = Array.from({ length: maxPaymentMonths() }, (_, i) => i + 1).map(month => `<option value="${month}" ${String(month) === state.paymentMonth ? 'selected' : ''}>Mois ${month} — impayés à cette échéance</option>`).join('')
   const monthCounts = selectedMonth ? followUpEnrollments.reduce((counts, enrollment) => {
@@ -437,6 +443,7 @@ function bindShell() {
   document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
   document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
   document.querySelectorAll('.receipt-payment').forEach(button => button.addEventListener('click', () => downloadReceipt(button.dataset.id)))
+  document.querySelectorAll('.cancel-payment').forEach(button => button.addEventListener('click', () => cancelPaymentModal(button.dataset.id)))
   document.querySelectorAll('.assign-pending').forEach(button => button.addEventListener('click', () => assignPendingPaymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
@@ -686,7 +693,7 @@ function manageStudentModal(studentId) {
   const studentPayments = state.payments.filter(payment => slots.some(slot => slot.id === payment.enrollment_id))
   const deleteButton = canDeleteStudents() ? '<button id="delete-student-from-modal" class="danger" type="button">Supprimer cet élève</button>' : ''
   const pendingButton = studentPayments.length && canDeleteStudents() ? '<button id="move-student-to-pending" class="secondary" type="button">Mettre ses paiements en attente</button>' : ''
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button>${pendingButton}${deleteButton}</div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<section class="student-settings"><div class="student-status-control"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div>${pendingButton || deleteButton ? `<div class="student-actions">${pendingButton}${deleteButton}</div>` : ''}</section><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Modifiez seulement les informations nécessaires dans chaque dossier.</p><div class="dossier-list">${rows}</div>`)
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
     const button = event.currentTarget
     button.disabled = true
@@ -807,6 +814,36 @@ function deleteStudentModal(studentId) {
     }
     modal.remove()
     await refresh('Élève supprimé. Les numéros de la vague ont été réorganisés.')
+  })
+}
+
+function cancelPaymentModal(paymentId) {
+  const payment = state.payments.find(x => x.id === paymentId)
+  if (!payment || paymentIsCancelled(payment)) return toast('Ce versement est introuvable ou déjà annulé.', true)
+  const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+  const student = enrollment && studentFor(enrollment)
+  const owner = student ? `${student.last_name} ${student.first_name}` : 'Paiement en attente'
+  const modal = showModal('⚠ Annuler un paiement', `<form id="cancel-payment-form"><div class="danger-zone"><h3>Cette action retire le versement des calculs.</h3><p>Vous êtes sur le point d’annuler <strong>${money(payment.amount)}</strong> pour <strong>${esc(owner)}</strong>. Il restera dans l’historique avec la mention « Annulé », mais ne comptera plus dans l’encaissé, le reste dû ou les statuts mensuels.</p><label>Motif de l’annulation<textarea name="cancellation_reason" rows="3" required placeholder="Ex. Saisie en double, remboursement, erreur de montant"></textarea></label><label>Pour confirmer, saisissez exactement <strong>ANNULER</strong><input name="confirmation" autocomplete="off" required></label><p id="cancel-payment-error" class="error"></p></div><div class="modal-actions"><button type="button" class="secondary cancel">Retour</button><button id="confirm-cancel-payment" class="danger" type="submit" disabled>Annuler le paiement</button></div></form>`)
+  const form = modal.querySelector('#cancel-payment-form')
+  const submit = modal.querySelector('#confirm-cancel-payment')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  form.confirmation.addEventListener('input', () => { submit.disabled = form.confirmation.value.trim() !== 'ANNULER' })
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    if (form.confirmation.value.trim() !== 'ANNULER') return
+    submit.disabled = true
+    const { error } = await supabase.from('payments').update({
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: state.user.id,
+      cancellation_reason: form.cancellation_reason.value.trim()
+    }).eq('id', paymentId).select('id,cancelled_at').single()
+    if (error) {
+      modal.querySelector('#cancel-payment-error').textContent = error.message
+      submit.disabled = false
+      return
+    }
+    modal.remove()
+    await refresh('Paiement annulé : il reste visible dans l’historique mais n’est plus comptabilisé.')
   })
 }
 
