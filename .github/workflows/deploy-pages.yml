@@ -1,4 +1,4 @@
-name: Publier BEVA Gestion
+name: Déployer BEVA Gestion sur GitHub Pages
 
 on:
   push:
@@ -11,36 +11,38 @@ permissions:
   id-token: write
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le code
+      - name: Récupérer le projet
         uses: actions/checkout@v4
-      - name: Préparer Node.js
+      - name: Installer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Installer et compiler
-        run: npm ci && npm run build
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Compiler l’application
+        run: npm run build
       - name: Préparer GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Envoyer le site compilé
+      - name: Envoyer les fichiers compilés
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Mettre le site en ligne
+      - name: Publier
         id: deployment
         uses: actions/deploy-pages@v4
