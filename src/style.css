@@ -130,7 +130,6 @@ td { font-size: 14px; }
 .badge.warning { color: #9a6208; background: #fff4d8; }
 .badge.due { color: #a52a2a; background: #fff0f0; }
 .empty { padding: 42px 20px; color: #78879b; text-align: center; }
-.financial-note { margin: -8px 0 20px; padding: 13px 15px; border: 1px solid #cfe2f7; border-radius: 13px; color: #214e7f; background: #edf6ff; font-size: 13px; line-height: 1.45; }
 .section { display: none; }
 .section.active { display: block; }
 .formation-cell { min-width: 210px; }
@@ -166,7 +165,6 @@ td { font-size: 14px; }
 .payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .mobile-payment-list { display: none; }
 .mobile-student-list { display: none; }
-.student-formations { margin: -1px 0 2px; color: #52657b; font-size: 12px; line-height: 1.4; }
 .age-statistics { margin-bottom: 20px; }
 .age-stat-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 20px 5px; }
 .age-stat-summary > div { display: grid; gap: 5px; padding: 13px 14px; border: 1px solid #dce7f4; border-radius: 12px; background: #f5f9fd; color: #61738a; font-size: 12px; font-weight: 700; }
@@ -213,16 +211,15 @@ td { font-size: 14px; }
   .login-brand { display: none; }
   .login-panel { min-height: 100vh; border-radius: 0; }
   .shell { display: block; }
-  .sidebar { position: fixed; z-index: 15; right: 0; bottom: 0; left: 0; width: 100%; height: auto; padding: 7px 8px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.12); box-shadow: 0 -8px 24px rgba(3, 14, 28, .2); }
+  .sidebar { position: fixed; z-index: 15; right: 0; bottom: 0; left: 0; width: 100%; height: auto; padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(3, 14, 28, .2); }
   .sidebar .logo, .sidebar-bottom { display: none; }
-  .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .nav button { min-height: 54px; padding: 7px 4px; border-radius: 11px; font-size: 11px; line-height: 1.2; text-align: center; }
+  .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+  .nav button { min-height: 51px; padding: 6px 2px; font-size: 10px; line-height: 1.15; text-align: center; }
   .nav span { display: block; }
-  .nav button[data-section="formations"], .nav button[data-section="intakes"] { display: none; }
-  .main { padding: 16px 12px calc(96px + env(safe-area-inset-bottom)); }
+  .main { padding: 16px 12px calc(92px + env(safe-area-inset-bottom)); }
   /* Phone view is a read-only dashboard first: the key figures are large,
      vertically legible and never squeezed into a desktop-style table. */
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-2 { grid-template-columns: 1fr; }
   .dossier-grid { grid-template-columns: 1fr; }
   .student-settings, .student-status-control { grid-template-columns: 1fr; display: grid; }
@@ -233,19 +230,15 @@ td { font-size: 14px; }
   .payment-filter { width: 100%; min-width: 0; }
   .payment-summary { line-height: 1.7; }
   .topbar { align-items: flex-start; flex-direction: column; gap: 12px; margin-bottom: 18px; }
-  .topbar h1 { font-size: 24px; line-height: 1.15; }
-  .topbar p { font-size: 13px; line-height: 1.4; }
+  .topbar h1 { font-size: 24px; }
   .topbar-actions { width: 100%; align-items: stretch; flex-direction: row; }
   .topbar-actions select { min-width: 0; flex: 1; }
   .topbar-actions .primary { white-space: nowrap; padding-inline: 12px; }
   .tools { flex-direction: column; }
   .panel-head { align-items: stretch; flex-direction: column; padding: 15px; }
-  .panel-head h2 { font-size: 17px; line-height: 1.28; }
   .panel-head > .primary { width: 100%; }
-  .card { min-width: 0; padding: 14px; border-radius: 14px; }
-  .card .label { font-size: 10px; line-height: 1.3; }
-  .card .value { overflow-wrap: anywhere; font-size: clamp(19px, 6vw, 25px); line-height: 1.15; }
-  .financial-note { margin: -3px 0 14px; padding: 12px; font-size: 12px; }
+  .card { padding: 16px; }
+  .card .value { font-size: 24px; }
   .desktop-only { display: none !important; }
   .desktop-table { display: none; }
   .student-panel .panel-head { gap: 10px; }
@@ -254,8 +247,7 @@ td { font-size: 14px; }
   .student-mobile-card { display: grid; gap: 8px; padding: 14px; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
   .student-mobile-card > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
   .student-mobile-card > .link-btn { width: fit-content; max-width: 100%; padding: 0; overflow-wrap: anywhere; color: #092f5b; font-size: 16px; text-align: left; }
-  .student-mobile-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
-  .student-mobile-card dl div:last-child { grid-column: 1 / -1; }
+  .student-mobile-card dl { display: grid; grid-template-columns: .8fr .8fr 1.4fr; gap: 8px; margin: 0; }
   .student-mobile-card dl div { min-width: 0; padding: 8px; border-radius: 9px; background: #f1f6fc; }
   .student-mobile-card dt { color: #66758a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
   .student-mobile-card dd { margin: 4px 0 0; color: #0b315d; font-size: 12px; font-weight: 900; overflow-wrap: anywhere; }
@@ -269,13 +261,12 @@ td { font-size: 14px; }
   .payment-mobile-card { padding: 14px; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
   .payment-mobile-card > div:first-child { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #0c417d; }
   .payment-mobile-card p { margin: 7px 0 12px; color: #52657b; font-size: 13px; }
-  .payment-mobile-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
-  .payment-mobile-card dl div:last-child { grid-column: 1 / -1; }
+  .payment-mobile-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
   .payment-mobile-card dl div { min-width: 0; padding: 8px; border-radius: 9px; background: #f1f6fc; }
   .payment-mobile-card dt { color: #66758a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
   .payment-mobile-card dd { margin: 4px 0 0; color: #0b315d; font-size: 12px; font-weight: 900; overflow-wrap: anywhere; }
   .financial-panel { overflow: visible; }
-  .financial-panel .panel-head { position: static; }
+  .financial-panel .panel-head { position: sticky; top: 0; z-index: 4; background: #fff; }
   .financial-panel .payment-filter select { min-height: 46px; font-size: 16px; }
   .history-panel .table-wrap, .pending-panel .table-wrap { display: none; }
   .history-panel::after { content: 'Les reçus et les opérations détaillées sont disponibles sur tablette ou ordinateur.'; display: block; padding: 16px; color: #718096; font-size: 13px; line-height: 1.45; }
@@ -289,16 +280,4 @@ td { font-size: 14px; }
   .history-detail { padding: 13px; }
   .dossier-actions { align-items: stretch; flex-direction: column; }
   .dossier-actions button { width: 100%; }
-}
-
-@media (max-width: 380px) {
-  .main { padding-inline: 10px; }
-  .topbar-actions { flex-direction: column; }
-  .topbar-actions select { min-height: 46px; }
-  .cards { gap: 8px; }
-  .card { padding: 12px; }
-  .card .value { font-size: 18px; }
-  .age-stat-summary { grid-template-columns: 1fr; }
-  .payment-mobile-card dl, .student-mobile-card dl { grid-template-columns: 1fr; }
-  .student-mobile-card dl div:last-child, .payment-mobile-card dl div:last-child { grid-column: auto; }
 }
