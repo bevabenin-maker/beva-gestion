@@ -4,6 +4,8 @@ import './style.css'
 const SUPABASE_URL = 'https://bxhgptcsuhbfuqamcdxs.supabase.co'
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_gQ3vAqx13bYldbATsPS6wA_2bvKXpBj'
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+// Works locally and on the GitHub Pages address without hard-coding localhost.
+const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
 const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard' }
@@ -39,6 +41,7 @@ function loginView() {
             <p id="login-error" class="error"></p>
             <button class="primary" type="submit">Se connecter</button>
           </form>
+          <button id="forgot-password" class="link-btn auth-link" type="button">Mot de passe oublié&nbsp;?</button>
         </div>
       </section>
     </div>`
@@ -54,6 +57,81 @@ function loginView() {
       button.disabled = false
       button.textContent = 'Se connecter'
     }
+  })
+  document.querySelector('#forgot-password').addEventListener('click', passwordResetView)
+}
+
+function passwordResetView() {
+  app.innerHTML = `
+    <div class="login-page">
+      <section class="login-brand"><div class="brand-mark">BEVA</div><h1>Réinitialiser<br>votre accès.</h1><p>Nous vous enverrons un lien sécurisé pour choisir un nouveau mot de passe.</p></section>
+      <section class="login-panel"><div class="login-card">
+        <h2>Mot de passe oublié</h2><p class="muted">Saisissez l’adresse e-mail liée à votre compte BEVA.</p>
+        <form id="reset-request-form" class="form-stack">
+          <label>Adresse e-mail<input name="email" type="email" autocomplete="email" required placeholder="nom@exemple.com"></label>
+          <p id="reset-message" class="error"></p>
+          <button class="primary" type="submit">Envoyer le lien</button>
+        </form>
+        <button id="back-login" class="link-btn auth-link" type="button">← Retour à la connexion</button>
+      </div></section>
+    </div>`
+  document.querySelector('#back-login').addEventListener('click', loginView)
+  document.querySelector('#reset-request-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const button = event.currentTarget.querySelector('button')
+    const message = document.querySelector('#reset-message')
+    button.disabled = true
+    button.textContent = 'Envoi…'
+    const { error } = await supabase.auth.resetPasswordForEmail(new FormData(event.currentTarget).get('email'), { redirectTo: appUrl() })
+    if (error) {
+      message.textContent = error.message
+      button.disabled = false
+      button.textContent = 'Envoyer le lien'
+      return
+    }
+    message.className = 'success'
+    message.textContent = 'Si cette adresse correspond à un compte, un lien de réinitialisation vient d’être envoyé.'
+    button.textContent = 'Lien envoyé'
+  })
+}
+
+function choosePasswordView() {
+  app.innerHTML = `
+    <div class="login-page">
+      <section class="login-brand"><div class="brand-mark">BEVA</div><h1>Choisissez un<br>nouveau mot de passe.</h1><p>Utilisez un mot de passe personnel et conservez-le en lieu sûr.</p></section>
+      <section class="login-panel"><div class="login-card">
+        <h2>Nouveau mot de passe</h2><p class="muted">Votre lien a bien été reconnu.</p>
+        <form id="new-password-form" class="form-stack">
+          <label>Nouveau mot de passe<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Au moins 8 caractères"></label>
+          <label>Confirmer le mot de passe<input name="confirmation" type="password" autocomplete="new-password" minlength="8" required placeholder="Répétez le mot de passe"></label>
+          <p id="new-password-message" class="error"></p>
+          <button class="primary" type="submit">Enregistrer le mot de passe</button>
+        </form>
+      </div></section>
+    </div>`
+  document.querySelector('#new-password-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const message = document.querySelector('#new-password-message')
+    if (data.get('password') !== data.get('confirmation')) {
+      message.textContent = 'Les deux mots de passe doivent être identiques.'
+      return
+    }
+    const button = event.currentTarget.querySelector('button')
+    button.disabled = true
+    button.textContent = 'Enregistrement…'
+    const { error } = await supabase.auth.updateUser({ password: data.get('password') })
+    if (error) {
+      message.textContent = error.message
+      button.disabled = false
+      button.textContent = 'Enregistrer le mot de passe'
+      return
+    }
+    window.history.replaceState({}, '', appUrl())
+    message.className = 'success'
+    message.textContent = 'Mot de passe enregistré. Ouverture de votre espace…'
+    const { data: { session } } = await supabase.auth.getSession()
+    setTimeout(() => start(session), 700)
   })
 }
 
@@ -314,9 +392,12 @@ async function start(session) {
   }
 }
 
+const isRecovery = new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery'
 const { data: { session } } = await supabase.auth.getSession()
-await start(session)
+if (isRecovery && session) choosePasswordView()
+else await start(session)
 supabase.auth.onAuthStateChange((event, currentSession) => {
+  if (event === 'PASSWORD_RECOVERY' && currentSession) choosePasswordView()
   if (event === 'SIGNED_IN' && currentSession) start(currentSession)
   if (event === 'SIGNED_OUT') { state.user = null; state.staff = null; loginView() }
 })
