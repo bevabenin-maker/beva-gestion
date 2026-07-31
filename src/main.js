@@ -28,10 +28,13 @@ const scopedPayments = () => {
   const ids = new Set(scopedEnrollments().map(x => x.id))
   return state.payments.filter(x => ids.has(x.enrollment_id))
 }
+const pendingPayments = () => state.payments.filter(x => x.payment_context === 'pending')
 const enrollmentPayments = enrollmentId => state.payments.filter(x => x.enrollment_id === enrollmentId)
 function financialStatus(enrollment) {
   const paid = enrollmentPayments(enrollment.id).reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const due = enrollment.formation_id ? feeFor(Boolean(enrollment.scholarship_status)) : 0
+  // `agreed_fee` can be lower for a returning learner who only resumes the
+  // months that still need to be completed. Older dossiers keep their BEVA fee.
+  const due = enrollment.formation_id ? Number(enrollment.agreed_fee ?? feeFor(Boolean(enrollment.scholarship_status))) : 0
   const remaining = Math.max(0, due - paid)
   return { paid, due, remaining, label: due > 0 && remaining === 0 ? 'Soldé' : paid > 0 ? 'Partiel' : 'Non payé', className: due > 0 && remaining === 0 ? 'ok' : paid > 0 ? 'warning' : 'due' }
 }
@@ -75,15 +78,20 @@ const paymentMethodLabel = method => ({ especes: 'Espèces', mobile_money: 'Mobi
 function receiptHtml(payment) {
   const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
   const student = enrollment && studentFor(enrollment)
-  const formation = enrollment && formationFor(enrollment)
+  const formation = enrollment ? formationFor(enrollment) : state.formations.find(x => x.id === payment.pending_formation_id)
   const paidBefore = enrollmentPayments(enrollment?.id).filter(x => x.id !== payment.id && new Date(x.paid_at) <= new Date(payment.paid_at)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
-  const total = enrollment ? financialStatus(enrollment).due : 0
+  const total = enrollment ? financialStatus(enrollment).due : null
   const remaining = Math.max(0, total - paidBefore - Number(payment.amount || 0))
   const paymentObject = `${paymentMonthLabel(payment.billing_month)}${payment.installment ? ` - Tranche ${payment.installment}` : ''}`
+  const pending = payment.payment_context === 'pending'
+  const payerName = pending ? `${payment.pending_last_name || ''} ${payment.pending_first_name || ''}`.trim() : (student ? `${student.last_name} ${student.first_name}` : '—')
+  const dossier = pending ? 'En attente d’affectation' : (enrollment?.dossier_code || '—')
+  const status = pending ? (payment.pending_scholarship_status ? 'Boursier' : 'Standard') : (enrollment?.scholarship_status ? 'Boursier' : 'Standard')
+  const totals = pending ? `<section class="totals"><div class="total-row"><span>Situation</span><b>Paiement conservé en attente d’affectation</b></div></section>` : `<section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section>`
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reçu ${esc(receiptNumber(payment))}</title><style>
     *{box-sizing:border-box} body{margin:0;background:#edf2f8;font-family:Arial,Helvetica,sans-serif;color:#14243a}.toolbar{position:sticky;top:0;z-index:2;display:flex;justify-content:center;padding:14px;background:#071a33}.toolbar button{border:0;border-radius:8px;padding:11px 18px;background:#d4af37;color:#071a33;font-weight:800;cursor:pointer}.receipt{width:210mm;min-height:297mm;margin:24px auto;padding:17mm 16mm 13mm;background:white;box-shadow:0 2px 18px #60738d55;position:relative}.top{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;border-bottom:5px solid #0b3d91;padding-bottom:12px}.logo{width:205px;max-width:100%;height:auto;display:block}.receipt-title{text-align:right;color:#0b3d91}.receipt-title h1{font-size:23px;margin:0 0 8px;letter-spacing:.3px}.receipt-title p{margin:0;color:#344a67;font-size:12px}.receipt-number{display:inline-block;margin-top:8px;padding:7px 10px;background:#e8f1fb;color:#0b3d91;font-weight:800;font-size:12px}.bar{margin-top:15px;padding:7px 10px;color:white;background:#0b3d91;font-size:12px;font-weight:800}.info{display:grid;grid-template-columns:1fr 1fr;border:1px solid #cbd7e5;border-top:0}.field{display:grid;grid-template-columns:128px 1fr;gap:8px;min-height:35px;padding:9px 10px;border-top:1px solid #d6e0eb;font-size:12px}.field:nth-child(odd){border-right:1px solid #d6e0eb}.field b{color:#405574}.field strong{color:#102c50}.payment-box{margin-top:20px;border:1px solid #b9d8c5}.payment-box h2{margin:0;padding:8px 10px;background:#176b42;color:#fff;font-size:12px;text-align:center}.payment-row{display:grid;grid-template-columns:1.4fr .75fr .75fr 1fr;min-height:40px}.payment-row>*{padding:11px 9px;border-right:1px solid #c7dfd0;font-size:12px}.payment-row>*:last-child{border:0}.payment-head{font-weight:800;color:white;background:#17477e}.payment-detail{background:#dcf5e8}.payment-detail strong{color:#176b42}.amount{display:flex;justify-content:space-between;align-items:center;margin-top:19px;padding:10px 13px;color:white;background:#0b3d91;font-weight:800;font-size:13px}.amount b{font-size:22px;color:#0b3d91;background:#fff7df;padding:4px 15px}.totals{margin-top:20px;border:1px solid #cbd7e5}.total-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d6e0eb;font-size:12px}.total-row:last-child{border:0}.total-row b{color:#0b3d91}.total-row.remaining{background:#fff0ef}.total-row.remaining b{color:#b42318}.notice{margin-top:19px;padding:7px 10px;color:white;background:#0b3d91;text-align:center;font-size:10px;font-weight:700}.stamp-wrap{text-align:center;margin-top:21px}.stamp{width:120px;height:auto;opacity:.96}.signature{font-size:11px;color:#405574;margin-top:3px}.contact{margin-top:14px;text-align:center;color:#61738a;font-size:10px}@page{size:A4;margin:0}@media print{body{background:white}.toolbar{display:none}.receipt{margin:0;box-shadow:none;width:210mm;min-height:297mm}}
     @media(max-width:760px){.receipt{width:100%;min-height:0;margin:0;padding:22px 16px}.top{grid-template-columns:1fr}.receipt-title{text-align:left}.payment-row{grid-template-columns:1fr 1fr}.payment-head>*:nth-child(n+3),.payment-detail>*:nth-child(n+3){border-top:1px solid #c7dfd0}.field{grid-template-columns:100px 1fr}.field:nth-child(odd){border-right:0}.info{grid-template-columns:1fr}.amount{align-items:flex-start;gap:10px}.amount b{font-size:17px}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Télécharger / imprimer le PDF</button></div><main class="receipt"><section class="top"><img class="logo" src="${receiptAsset('beva-logo.png')}" alt="BEVA"><div class="receipt-title"><h1>REÇU DE PAIEMENT</h1><p>Date : <b>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</b></p><div class="receipt-number">N° ${esc(receiptNumber(payment))}</div></div></section><div class="bar">INFORMATIONS DE L'ÉTUDIANT(E)</div><section class="info"><div class="field"><b>Nom et prénom</b><strong>${esc(student ? `${student.last_name} ${student.first_name}` : '—')}</strong></div><div class="field"><b>N° de dossier</b><strong>${esc(enrollment?.dossier_code || '—')}</strong></div><div class="field"><b>Formation</b><strong>${esc(formation?.name || '—')}</strong></div><div class="field"><b>Statut tarifaire</b><strong>${enrollment?.scholarship_status ? 'Boursier' : 'Standard'}</strong></div></section><section class="payment-box"><h2>DÉTAIL DU VERSEMENT</h2><div class="payment-row payment-head"><b>Description</b><b>Montant reçu</b><b>Mode</b><b>Référence</b></div><div class="payment-row payment-detail"><strong>${esc(paymentObject)}</strong><strong>${money(payment.amount)}</strong><span>${esc(paymentMethodLabel(payment.method))}</span><span>${esc(payment.reference || '—')}</span></div></section><div class="amount"><span>MONTANT DE CE REÇU (FCFA)</span><b>${money(payment.amount)}</b></div><section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section><p class="notice">Ce reçu tient lieu de preuve de paiement. Conservez-le précieusement. - BEVA, Abomey-Calavi, Bénin</p><div class="stamp-wrap"><img class="stamp" src="${receiptAsset('beva-stamp.png')}" alt="Cachet BEVA"><div class="signature">La Direction</div></div><p class="contact">BEVA - Bénin Vivi Académie - Abomey-Calavi, Bénin</p></main></body></html>`
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Télécharger / imprimer le PDF</button></div><main class="receipt"><section class="top"><img class="logo" src="${receiptAsset('beva-logo.png')}" alt="BEVA"><div class="receipt-title"><h1>REÇU DE PAIEMENT</h1><p>Date : <b>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</b></p><div class="receipt-number">N° ${esc(receiptNumber(payment))}</div></div></section><div class="bar">INFORMATIONS DE L'ÉTUDIANT(E)</div><section class="info"><div class="field"><b>Nom et prénom</b><strong>${esc(payerName)}</strong></div><div class="field"><b>N° de dossier</b><strong>${esc(dossier)}</strong></div><div class="field"><b>Formation</b><strong>${esc(formation?.name || 'Non précisée')}</strong></div><div class="field"><b>Statut tarifaire</b><strong>${status}</strong></div></section><section class="payment-box"><h2>DÉTAIL DU VERSEMENT</h2><div class="payment-row payment-head"><b>Description</b><b>Montant reçu</b><b>Mode</b><b>Référence</b></div><div class="payment-row payment-detail"><strong>${esc(pending ? 'Paiement en attente d’affectation' : paymentObject)}</strong><strong>${money(payment.amount)}</strong><span>${esc(paymentMethodLabel(payment.method))}</span><span>${esc(payment.reference || '—')}</span></div></section><div class="amount"><span>MONTANT DE CE REÇU (FCFA)</span><b>${money(payment.amount)}</b></div>${totals}<p class="notice">Ce reçu tient lieu de preuve de paiement. Conservez-le précieusement. - BEVA, Abomey-Calavi, Bénin</p><div class="stamp-wrap"><img class="stamp" src="${receiptAsset('beva-stamp.png')}" alt="Cachet BEVA"><div class="signature">La Direction</div></div><p class="contact">BEVA - Bénin Vivi Académie - Abomey-Calavi, Bénin</p></main></body></html>`
 }
 
 function downloadReceipt(paymentId) {
@@ -288,6 +296,7 @@ function shellView() {
             <div class="card"><div class="label">Dossiers actifs</div><div class="value">${stats.active}</div></div>
             <div class="card"><div class="label">Total encaissé</div><div class="value">${money(stats.paid)}</div></div>
             <div class="card"><div class="label">Reste à payer</div><div class="value">${money(stats.balance)}</div></div>
+            <div class="card"><div class="label">Paiements en attente</div><div class="value">${pendingPayments().length}</div></div>
           </div>
           ${studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8))}
         </section>
@@ -367,12 +376,20 @@ function paymentPanel() {
     return counts
   }, { 'Payé': 0, 'Partiel': 0, 'Non payé': 0 }) : null
   const monthlySummary = monthCounts ? `<div class="payment-summary"><strong>Mois ${selectedMonth} :</strong><span class="badge ok">${monthCounts.Payé} payé${monthCounts.Payé > 1 ? 's' : ''}</span><span class="badge warning">${monthCounts.Partiel} partiel${monthCounts.Partiel > 1 ? 's' : ''}</span><span class="badge due">${monthCounts['Non payé']} non payé${monthCounts['Non payé'] > 1 ? 's' : ''}</span></div>` : ''
-  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="table-wrap">
+  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="table-wrap">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
     <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement enregistré.</div>'}</div></div>`
+}
+
+function pendingPaymentPanel() {
+  const rows = pendingPayments().map(payment => {
+    const formation = state.formations.find(x => x.id === payment.pending_formation_id)
+    return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td><strong>${esc(payment.pending_last_name)} ${esc(payment.pending_first_name)}</strong><small class="legacy-code">${esc(payment.pending_phone || 'Sans téléphone')}</small></td><td>${esc(formation?.name || 'Formation non précisée')}</td><td><strong>${money(payment.amount)}</strong></td><td>${payment.pending_scholarship_status ? 'Boursier' : 'Non boursier'}</td><td class="row-actions"><button class="primary assign-pending" data-id="${payment.id}">Affecter à une vague</button><button class="link-btn receipt-payment" data-id="${payment.id}">Reçu PDF</button></td></tr>`
+  }).join('')
+  return `<div class="panel pending-panel"><div class="panel-head"><div><h2>Paiements en attente d’affectation</h2><p class="muted">Ces montants sont encaissés, mais ne comptent dans aucune vague tant que l’élève n’y est pas affecté.</p></div><button id="add-pending-payment" class="primary">+ Paiement en attente</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Personne</th><th>Formation</th><th>Montant</th><th>Bourse</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement en attente.</div>'}</div></div>`
 }
 
 function formationPanel() {
@@ -402,11 +419,13 @@ function bindShell() {
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
+  document.querySelector('#add-pending-payment')?.addEventListener('click', pendingPaymentModal)
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
   document.querySelectorAll('.edit-intake').forEach(button => button.addEventListener('click', () => editIntakeModal(button.dataset.id)))
   document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
   document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
   document.querySelectorAll('.receipt-payment').forEach(button => button.addEventListener('click', () => downloadReceipt(button.dataset.id)))
+  document.querySelectorAll('.assign-pending').forEach(button => button.addEventListener('click', () => assignPendingPaymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
     state.paymentMonth = 'all'
@@ -462,9 +481,10 @@ function newStudentModal() {
     </div>
     <label style="margin-top:15px">Notes<textarea name="notes" rows="3"></textarea></label>
     <p class="muted">Les quatre dossiers de formation seront créés automatiquement.</p>
-    <div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
+    <div class="modal-actions"><button type="button" id="start-return" class="secondary">Reprise de formation</button><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
   </form>`)
   modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#start-return').addEventListener('click', () => { modal.remove(); returnStudentModal() })
   modal.querySelector('#student-form').addEventListener('submit', async event => {
     event.preventDefault()
     const button = event.currentTarget.querySelector('[type=submit]')
@@ -476,6 +496,87 @@ function newStudentModal() {
     if (error) return toast(error.message, true), button.disabled = false
     modal.remove()
     await refresh('Étudiant enregistré avec ses quatre dossiers.')
+  })
+}
+
+function pendingPaymentModal() {
+  const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')
+  const modal = showModal('Enregistrer un paiement en attente', `<p class="muted modal-context">À utiliser lorsqu’une personne a payé mais n’a pas encore intégré une vague. Son reçu est disponible tout de suite, sans créer d’élève dans une vague.</p><form id="pending-payment-form"><div class="grid-2"><label>Nom<input name="pending_last_name" required></label><label>Prénom(s)<input name="pending_first_name" required></label><label>Téléphone<input name="pending_phone" inputmode="tel"></label><label>Formation souhaitée<select name="pending_formation_id"><option value="">Non précisée</option>${formationOptions}</select></label><label>Montant versé<input name="amount" type="number" min="1" required></label><label>Bourse<select name="pending_scholarship_status"><option value="true">Boursier</option><option value="false">Non boursier</option></select></label><label>Date<input name="paid_at" type="date" value="${today()}" required></label><label>Moyen de paiement<select name="method"><option value="especes">Espèces</option><option value="mobile_money">Mobile Money</option><option value="banque">Banque</option><option value="autre">Autre</option></select></label><label>Référence<input name="reference"></label></div><label style="margin-top:15px">Note / raison de l’attente<textarea name="notes" rows="3" placeholder="Ex. Attend la prochaine vague"></textarea></label><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer et créer le reçu</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#pending-payment-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    data.amount = Number(data.amount)
+    data.payment_context = 'pending'
+    data.pending_scholarship_status = data.pending_scholarship_status === 'true'
+    data.pending_formation_id ||= null
+    data.pending_phone ||= null
+    data.reference ||= null
+    data.notes ||= null
+    data.received_by = state.user.id
+    data.paid_at = new Date(`${data.paid_at}T12:00:00`).toISOString()
+    const { data: created, error } = await supabase.from('payments').insert(data).select().single()
+    if (error || !created) return toast(error?.message || 'Le paiement en attente n’a pas été enregistré.', true)
+    modal.remove()
+    await refresh('Paiement en attente enregistré.')
+    setTimeout(() => downloadReceipt(created.id), 100)
+  })
+}
+
+function assignPendingPaymentModal(paymentId) {
+  const payment = pendingPayments().find(x => x.id === paymentId)
+  if (!payment) return toast('Paiement en attente introuvable.', true)
+  const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}" ${x.id === payment.pending_formation_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+  const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+  const modal = showModal('Affecter le paiement à une vague', `<p class="muted modal-context"><strong>${esc(payment.pending_last_name)} ${esc(payment.pending_first_name)}</strong> · ${money(payment.amount)}. Le même paiement sera rattaché à son nouveau dossier : il ne sera pas saisi une deuxième fois.</p><form id="assign-pending-form"><div class="grid-2"><label>Vague<select name="intake_id" required>${intakeOptions}</select></label><label>Formation<select name="formation_id" required><option value="">Choisir</option>${formationOptions}</select></label><label>Mode de suivi<select name="learning_mode"><option value="presentiel">Présentiel</option><option value="en_ligne">En ligne</option></select></label><label>Bourse<select name="scholarship_status"><option value="true" ${payment.pending_scholarship_status ? 'selected' : ''}>Boursier</option><option value="false" ${!payment.pending_scholarship_status ? 'selected' : ''}>Non boursier</option></select></label></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Affecter à cette vague</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#assign-pending-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    const scholarship = data.scholarship_status === 'true'
+    const { data: student, error: studentError } = await supabase.from('students').insert({ last_name: payment.pending_last_name, first_name: payment.pending_first_name, phone: payment.pending_phone || null, intake_id: data.intake_id, status: 'actif', notes: payment.notes || null, created_by: state.user.id }).select().single()
+    if (studentError || !student) return toast(studentError?.message || 'Impossible de créer l’élève.', true)
+    const { data: slots, error: slotsError } = await supabase.from('enrollments').select('*').eq('student_id', student.id).order('slot')
+    const slot = slots?.find(x => x.status === 'disponible')
+    if (slotsError || !slot) return toast(slotsError?.message || 'Dossier de formation introuvable.', true)
+    const { data: enrollment, error: enrollmentError } = await supabase.from('enrollments').update({ formation_id: data.formation_id, agreed_fee: feeFor(scholarship), monthly_fee: feeFor(scholarship) / 3, scholarship_status: scholarship, learning_mode: data.learning_mode, status: 'inscrit', enrolled_at: today() }).eq('id', slot.id).select().single()
+    if (enrollmentError || !enrollment) return toast(enrollmentError?.message || 'Impossible de créer le dossier.', true)
+    const { error: paymentError } = await supabase.from('payments').update({ enrollment_id: enrollment.id, payment_context: 'assigned', pending_first_name: null, pending_last_name: null, pending_phone: null, pending_formation_id: null }).eq('id', payment.id)
+    if (paymentError) return toast(`Dossier créé, mais paiement non affecté : ${paymentError.message}`, true)
+    modal.remove()
+    state.intakeFilter = data.intake_id
+    await refresh('Paiement affecté à la vague et au dossier.')
+  })
+}
+
+function returnStudentModal() {
+  const sources = state.enrollments.filter(x => x.status === 'abandonne' && x.formation_id).map(x => {
+    const student = studentFor(x); const formation = formationFor(x)
+    return `<option value="${x.id}">${esc(student?.last_name)} ${esc(student?.first_name)} — ${esc(formation?.name || 'Formation')}</option>`
+  }).join('')
+  if (!sources) return toast('Aucun dossier abandonné n’est disponible pour une reprise.', true)
+  const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+  const modal = showModal('Créer une reprise de formation', `<p class="muted modal-context">L’ancien dossier reste dans sa vague et dans son historique. La reprise crée un nouvel élève numéroté dans la nouvelle vague, avec seulement les mois à refaire.</p><form id="return-form"><div class="grid-2"><label>Ancien dossier<select name="source_enrollment_id" required>${sources}</select></label><label>Nouvelle vague<select name="intake_id" required>${intakeOptions}</select></label><label>Reprendre à partir de<select name="resumes_from_month"><option value="1">Mois 1 — recommencer</option><option value="2">Mois 2 — mois 1 déjà acquis</option><option value="3">Mois 3 — mois 1 et 2 déjà acquis</option></select></label><label>Mode de suivi<select name="learning_mode"><option value="presentiel">Présentiel</option><option value="en_ligne">En ligne</option></select></label></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Créer la reprise</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#return-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    const source = state.enrollments.find(x => x.id === data.source_enrollment_id)
+    const oldStudent = source && studentFor(source)
+    if (!source || !oldStudent) return toast('Ancien dossier introuvable.', true)
+    const resumesFromMonth = Number(data.resumes_from_month)
+    const fullFee = feeFor(Boolean(source.scholarship_status))
+    const remainingFee = Math.max(0, fullFee - (resumesFromMonth - 1) * Math.ceil(fullFee / monthsFor(source)))
+    const { data: student, error: studentError } = await supabase.from('students').insert({ first_name: oldStudent.first_name, last_name: oldStudent.last_name, sex: oldStudent.sex, birth_date: oldStudent.birth_date, phone: oldStudent.phone, email: oldStudent.email, address: oldStudent.address, intake_id: data.intake_id, status: 'actif', returning_from_student_id: oldStudent.id, notes: `Reprise de ${formationFor(source)?.name || 'formation'} à partir du mois ${resumesFromMonth}.`, created_by: state.user.id }).select().single()
+    if (studentError || !student) return toast(studentError?.message || 'Impossible de créer la reprise.', true)
+    const { data: slots, error: slotsError } = await supabase.from('enrollments').select('*').eq('student_id', student.id).order('slot')
+    const slot = slots?.find(x => x.status === 'disponible')
+    if (slotsError || !slot) return toast(slotsError?.message || 'Dossier de reprise introuvable.', true)
+    const { error: enrollmentError } = await supabase.from('enrollments').update({ formation_id: source.formation_id, agreed_fee: remainingFee, monthly_fee: Math.ceil(fullFee / monthsFor(source)), scholarship_status: source.scholarship_status, learning_mode: data.learning_mode, status: 'inscrit', enrolled_at: today(), resumed_from_enrollment_id: source.id, resumes_from_month: resumesFromMonth }).eq('id', slot.id)
+    if (enrollmentError) return toast(enrollmentError.message, true)
+    modal.remove()
+    state.intakeFilter = data.intake_id
+    await refresh(`Reprise créée : il reste ${money(remainingFee)} à payer.`)
   })
 }
 
@@ -555,8 +656,9 @@ function manageStudentModal(studentId) {
     const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}" ${x.id === slot.formation_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
     const summary = financialStatus(slot)
     const simpleNumber = student.intake_student_number || student.student_number || '—'
-    const totalFee = feeFor(Boolean(slot.scholarship_status))
-    return `<article class="dossier-card"><div class="dossier-card-head"><div><strong>Dossier ${esc(slot.slot)} — N° ${esc(simpleNumber)}</strong>${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(slot.legacy_code)}</small>` : ''}</div><div><span class="badge ${summary.className}">${summary.label}</span><span class="badge">Payé ${money(summary.paid)} · Reste ${money(summary.remaining)}</span></div></div>
+    const totalFee = summary.due
+    const returnNote = slot.resumed_from_enrollment_id ? `<small class="legacy-code">Reprise à partir du mois ${esc(slot.resumes_from_month || 1)} · montant ajusté</small>` : ''
+    return `<article class="dossier-card"><div class="dossier-card-head"><div><strong>Dossier ${esc(slot.slot)} — N° ${esc(simpleNumber)}</strong>${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(slot.legacy_code)}</small>` : ''}${returnNote}</div><div><span class="badge ${summary.className}">${summary.label}</span><span class="badge">Payé ${money(summary.paid)} · Reste ${money(summary.remaining)}</span></div></div>
       <div class="dossier-grid">
         <label>Formation<select class="slot-formation" data-id="${slot.id}"><option value="">Disponible</option>${formationOptions}</select></label>
         <label>Statut<select class="slot-status" data-id="${slot.id}"><option value="disponible" ${slot.status === 'disponible' ? 'selected' : ''}>Disponible</option><option value="inscrit" ${slot.status === 'inscrit' ? 'selected' : ''}>Actif</option><option value="termine" ${slot.status === 'termine' ? 'selected' : ''}>Terminé</option><option value="abandonne" ${slot.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label>
@@ -594,7 +696,7 @@ function manageStudentModal(studentId) {
       return
     }
     const { data: updated, error } = await supabase.from('enrollments').update({
-      formation_id: formationId, agreed_fee: feeFor(scholarship),
+      formation_id: formationId, agreed_fee: currentSlot.resumed_from_enrollment_id ? Number(currentSlot.agreed_fee) : feeFor(scholarship),
       monthly_fee: monthlyFeeFor({ ...currentSlot, formation_id: formationId, scholarship_status: scholarship }),
       learning_mode: modal.querySelector(`.slot-mode[data-id="${id}"]`).value,
       scholarship_status: scholarship,
