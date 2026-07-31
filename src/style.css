@@ -143,8 +143,10 @@ td { font-size: 14px; }
 .close { border: 0; background: transparent; color: #68778b; font-size: 25px; }
 .modal-body { padding: 22px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-.student-settings { display: flex; align-items: end; gap: 12px; padding: 14px; margin-bottom: 16px; border: 1px solid #e4ebf4; border-radius: 12px; background: #f8fbff; }
-.student-settings label { flex: 1; }
+.student-settings { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #dbe6f3; border-radius: 14px; background: linear-gradient(135deg, #f7fbff, #edf4fc); }
+.student-status-control { display: grid; grid-template-columns: minmax(190px, 1fr) auto; align-items: end; gap: 12px; flex: 1; }
+.student-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+.student-actions .danger, .student-actions .secondary { white-space: nowrap; }
 .financial-panel + .history-panel { margin-top: 20px; }
 .pending-panel { margin-bottom: 20px; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
@@ -153,15 +155,15 @@ td { font-size: 14px; }
 .payment-filter { min-width: 250px; color: #3d4c61; }
 .payment-filter select { margin-top: 7px; }
 .dossier-list { display: grid; gap: 14px; }
-.dossier-card { padding: 16px; border: 1px solid #dfe7f1; border-radius: 14px; background: #fbfdff; }
-.dossier-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 13px; margin-bottom: 14px; border-bottom: 1px solid #e8eef5; }
+.dossier-card { padding: 18px; border: 1px solid #d9e5f2; border-radius: 14px; background: #fff; box-shadow: 0 5px 15px rgba(20, 54, 96, .04); }
+.dossier-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid #e8eef5; }
 .dossier-card-head strong { color: #092f5b; }
 .dossier-card-head .badge { margin-left: 5px; }
-.dossier-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.dossier-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .fee-summary { display: grid; align-content: center; gap: 3px; min-height: 76px; padding: 12px 14px; border: 1px solid #dce7f4; border-radius: 11px; background: #f3f8ff; color: #58708d; font-size: 13px; font-weight: 700; }
 .fee-summary strong { color: #092f5b; font-size: 18px; }
 .fee-summary small { color: #718096; font-size: 12px; font-weight: 600; }
-.dossier-actions { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
+.dossier-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 15px; border-top: 1px solid #edf1f5; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .row-actions { display: flex; gap: 6px; align-items: center; }
 .row-actions .danger { padding: 7px 10px; font-size: 12px; }
@@ -195,6 +197,9 @@ td { font-size: 14px; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-2 { grid-template-columns: 1fr; }
   .dossier-grid { grid-template-columns: 1fr; }
+  .student-settings, .student-status-control { grid-template-columns: 1fr; display: grid; }
+  .student-actions { justify-content: stretch; }
+  .student-actions button { width: 100%; }
   .dossier-card-head { display: grid; }
   .row-actions { min-width: 190px; }
   .payment-filter { width: 100%; min-width: 0; }
