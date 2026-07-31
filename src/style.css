@@ -146,6 +146,7 @@ td { font-size: 14px; }
 .student-settings { display: flex; align-items: end; gap: 12px; padding: 14px; margin-bottom: 16px; border: 1px solid #e4ebf4; border-radius: 12px; background: #f8fbff; }
 .student-settings label { flex: 1; }
 .financial-panel + .history-panel { margin-top: 20px; }
+.pending-panel { margin-bottom: 20px; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
 .payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .payment-filter { min-width: 250px; color: #3d4c61; }
@@ -184,18 +185,33 @@ td { font-size: 14px; }
   .login-brand { display: none; }
   .login-panel { min-height: 100vh; border-radius: 0; }
   .shell { display: block; }
-  .sidebar { position: static; width: 100%; height: auto; padding: 12px; }
+  .sidebar { position: fixed; z-index: 15; right: 0; bottom: 0; left: 0; width: 100%; height: auto; padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(3, 14, 28, .2); }
   .sidebar .logo, .sidebar-bottom { display: none; }
-  .nav { grid-template-columns: repeat(4, 1fr); }
-  .nav button { padding: 10px 4px; font-size: 12px; }
-  .main { padding: 20px 14px 45px; }
+  .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+  .nav button { min-height: 51px; padding: 6px 2px; font-size: 10px; line-height: 1.15; text-align: center; }
+  .nav span { display: block; }
+  .main { padding: 16px 12px calc(92px + env(safe-area-inset-bottom)); }
   .cards, .grid-2 { grid-template-columns: 1fr; }
   .dossier-grid { grid-template-columns: 1fr; }
   .dossier-card-head { display: grid; }
   .row-actions { min-width: 190px; }
   .payment-filter { width: 100%; min-width: 0; }
   .payment-summary { line-height: 1.7; }
-  .topbar { align-items: flex-start; }
-  .topbar-actions { align-items: stretch; flex-direction: column; }
+  .topbar { align-items: flex-start; flex-direction: column; gap: 12px; margin-bottom: 18px; }
+  .topbar h1 { font-size: 24px; }
+  .topbar-actions { width: 100%; align-items: stretch; flex-direction: row; }
+  .topbar-actions select { min-width: 0; flex: 1; }
+  .topbar-actions .primary { white-space: nowrap; padding-inline: 12px; }
   .tools { flex-direction: column; }
+  .panel-head { align-items: stretch; flex-direction: column; padding: 15px; }
+  .panel-head > .primary { width: 100%; }
+  .card { padding: 16px; }
+  .card .value { font-size: 24px; }
+  .modal-backdrop { align-items: end; padding: 0; }
+  .modal { width: 100%; max-height: 90vh; border-radius: 20px 20px 0 0; }
+  .modal-head, .modal-body { padding: 16px; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions button { flex: 1 1 140px; }
+  .dossier-actions { align-items: stretch; flex-direction: column; }
+  .dossier-actions button { width: 100%; }
 }
