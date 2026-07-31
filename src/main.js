@@ -8,7 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all' }
+const state = { user: null, staff: null, staffDirectory: [], students: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week' }
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
@@ -51,6 +51,11 @@ const feeFor = scholarship => scholarship ? 90000 : 180000
 const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholarship_status)) / monthsFor(enrollment))
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
 const canDeleteStudents = () => ['admin', 'direction'].includes(state.staff?.role)
+const canManagePayments = () => ['admin', 'direction'].includes(state.staff?.role)
+const canPermanentlyDeletePayments = () => state.staff?.role === 'admin'
+const dateTime = value => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+const auditActionLabel = action => ({ created: 'Versement enregistré', updated: 'Versement modifié', cancelled: 'Versement annulé', deleted: 'Versement supprimé' }[action] || 'Mise à jour')
+const staffName = id => state.staffDirectory.find(x => x.user_id === id)?.full_name || 'Système / ancien enregistrement'
 function monthlyProgress(enrollment, month) {
   const summary = financialStatus(enrollment)
   const monthlyFee = monthlyFeeFor(enrollment)
@@ -232,21 +237,25 @@ function choosePasswordView() {
 }
 
 async function loadData() {
-  const [staff, students, enrollments, formations, payments, intakes] = await Promise.all([
+  const [staff, staffDirectory, students, enrollments, formations, payments, paymentAudit, intakes] = await Promise.all([
     supabase.from('staff_members').select('*').eq('user_id', state.user.id).single(),
+    supabase.from('staff_members').select('user_id,full_name'),
     supabase.from('students').select('*').order('student_number', { ascending: false }),
     supabase.from('enrollments').select('*').order('dossier_code'),
     supabase.from('formations').select('*').order('name'),
     supabase.from('payments').select('*').order('paid_at', { ascending: false }),
+    supabase.from('payment_audit_log').select('*').order('occurred_at', { ascending: false }),
     supabase.from('intakes').select('*').order('start_date', { ascending: false })
   ])
-  const firstError = [staff, students, enrollments, formations, payments, intakes].find(x => x.error)?.error
+  const firstError = [staff, staffDirectory, students, enrollments, formations, payments, paymentAudit, intakes].find(x => x.error)?.error
   if (firstError) throw firstError
   state.staff = staff.data
+  state.staffDirectory = staffDirectory.data
   state.students = students.data
   state.enrollments = enrollments.data
   state.formations = formations.data
   state.payments = payments.data
+  state.paymentAudit = paymentAudit.data
   state.intakes = intakes.data
   if (!selectedIntake()) state.intakeFilter = state.intakes.find(x => x.active)?.id || state.intakes[0]?.id || null
 }
@@ -330,13 +339,45 @@ function studentRows(students) {
     const intake = state.intakes.find(x => x.id === student.intake_id)
     return `<tr>
       <td class="code">${student.intake_student_number ? 'N° ' + esc(student.intake_student_number) : esc(student.registration_code)}<small class="legacy-code">${esc(student.registration_code)}</small></td>
-      <td><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></td>
+      <td><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><small class="legacy-code">Historique et reçus</small></td>
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
       <td class="row-actions desktop-only"><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
     </tr>`
   }).join('')
+}
+
+function paymentActionButtons(payment) {
+  const cancelled = paymentIsCancelled(payment)
+  return `<div class="row-actions"><button class="link-btn receipt-payment" data-id="${payment.id}">${cancelled ? 'Document' : 'Reçu PDF'}</button>${canManagePayments() && !cancelled ? `<button class="link-btn edit-payment" data-id="${payment.id}">Modifier</button><button class="danger cancel-payment" data-id="${payment.id}">Annuler</button>` : ''}${canPermanentlyDeletePayments() ? `<button class="danger delete-payment" data-id="${payment.id}">Supprimer</button>` : ''}</div>`
+}
+
+function paymentHistoryRow(payment) {
+  const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+  const student = enrollment && studentFor(enrollment)
+  const remaining = enrollment ? financialStatus(enrollment).remaining : 0
+  const cancelled = paymentIsCancelled(payment)
+  return `<tr><td>${dateTime(payment.paid_at)}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
+    <td>${student ? `<button class="link-btn student-payment-history" data-id="${student.id}">${esc(student.last_name)} ${esc(student.first_name)}</button>` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
+    <td>${cancelled ? '—' : money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(paymentMethodLabel(payment.method))}</span></td><td>${cancelled ? `<span class="badge due">Annulé</span><small class="legacy-code">${esc(payment.cancellation_reason || 'Sans motif')}</small>` : esc(payment.reference || '—')}</td><td>${paymentActionButtons(payment)}</td></tr>`
+}
+
+function paymentAuditDescription(entry) {
+  const before = entry.before_data || {}
+  const after = entry.after_data || {}
+  if (entry.action === 'updated') {
+    const changes = []
+    if (Number(before.amount) !== Number(after.amount)) changes.push(`${money(before.amount)} → ${money(after.amount)}`)
+    if (before.paid_at !== after.paid_at) changes.push(`date : ${dateTime(before.paid_at)} → ${dateTime(after.paid_at)}`)
+    if (before.method !== after.method) changes.push(`moyen : ${paymentMethodLabel(before.method)} → ${paymentMethodLabel(after.method)}`)
+    if (before.billing_month !== after.billing_month || before.installment !== after.installment) changes.push('mois / tranche modifié')
+    if (before.enrollment_id !== after.enrollment_id || before.payment_context !== after.payment_context) changes.push('affectation modifiée')
+    return changes.length ? changes.join(' · ') : 'Informations du versement mises à jour'
+  }
+  if (entry.action === 'cancelled') return after.cancellation_reason ? `Motif : ${after.cancellation_reason}` : 'Retiré des calculs financiers'
+  if (entry.action === 'deleted') return `Ancien montant : ${money(before.amount)}`
+  return `Montant : ${money(after.amount)}`
 }
 
 function paymentPanel() {
@@ -366,18 +407,13 @@ function paymentPanel() {
       <td>${paidTarget}</td><td>${money(remaining)}</td><td>${money(summary.due)}</td>
       <td><span class="badge ${className}">${label}</span></td><td><button class="link-btn pay-slot" data-id="${enrollment.id}">Ajouter paiement</button></td></tr>`
   }).join('')
-  const rows = state.payments.filter(payment => {
+  const historyScope = state.payments.filter(payment => {
     const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
     return enrollment && scopedEnrollments().some(x => x.id === enrollment.id)
-  }).map(payment => {
-    const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
-    const student = enrollment && studentFor(enrollment)
-    const remaining = enrollment ? financialStatus(enrollment).remaining : 0
-    const cancelled = paymentIsCancelled(payment)
-    return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
-      <td>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
-      <td>${cancelled ? '—' : money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(paymentMethodLabel(payment.method))}</span></td><td>${cancelled ? `<span class="badge due">Annulé</span><small class="legacy-code">${esc(payment.cancellation_reason || 'Sans motif')}</small>` : esc(payment.reference || '—')}</td><td class="row-actions"><button class="link-btn receipt-payment" data-id="${payment.id}">${cancelled ? 'Document' : 'Reçu PDF'}</button>${!cancelled && canDeleteStudents() ? `<button class="danger cancel-payment" data-id="${payment.id}">Annuler</button>` : ''}</td></tr>`
-  }).join('')
+  })
+  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const historyPayments = state.paymentHistoryRange === 'all' ? historyScope : historyScope.filter(payment => new Date(payment.paid_at).getTime() >= weekStart)
+  const rows = historyPayments.map(paymentHistoryRow).join('')
   const monthOptions = Array.from({ length: maxPaymentMonths() }, (_, i) => i + 1).map(month => `<option value="${month}" ${String(month) === state.paymentMonth ? 'selected' : ''}>Mois ${month} — impayés à cette échéance</option>`).join('')
   const monthCounts = selectedMonth ? followUpEnrollments.reduce((counts, enrollment) => {
     const status = monthlyPaymentState(enrollment, selectedMonth).label
@@ -397,9 +433,9 @@ function paymentPanel() {
   return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
-    <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
+    <div class="panel history-panel"><div class="panel-head"><div><h2>${state.paymentHistoryRange === 'week' ? 'Versements récents — 7 derniers jours' : 'Historique complet des versements'}</h2><p class="muted">Cliquez sur le nom d’un élève pour ouvrir son historique, ses reçus et toutes les actions liées à ses paiements.</p></div><label class="payment-filter">Période<select id="payment-history-range"><option value="week" ${state.paymentHistoryRange === 'week' ? 'selected' : ''}>7 derniers jours</option><option value="all" ${state.paymentHistoryRange === 'all' ? 'selected' : ''}>Tout l’historique</option></select></label></div><div class="table-wrap">
     <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement enregistré.</div>'}</div></div>`
+    <tbody>${rows}</tbody></table>${rows ? '' : `<div class="empty">${state.paymentHistoryRange === 'week' ? 'Aucun versement au cours des 7 derniers jours.' : 'Aucun paiement enregistré.'}</div>`}</div></div>`
 }
 
 function pendingPaymentPanel() {
@@ -443,7 +479,10 @@ function bindShell() {
   document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
   document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
   document.querySelectorAll('.receipt-payment').forEach(button => button.addEventListener('click', () => downloadReceipt(button.dataset.id)))
+  document.querySelectorAll('.edit-payment').forEach(button => button.addEventListener('click', () => editPaymentModal(button.dataset.id)))
   document.querySelectorAll('.cancel-payment').forEach(button => button.addEventListener('click', () => cancelPaymentModal(button.dataset.id)))
+  document.querySelectorAll('.delete-payment').forEach(button => button.addEventListener('click', () => deletePaymentModal(button.dataset.id)))
+  document.querySelectorAll('.student-payment-history').forEach(button => button.addEventListener('click', () => studentPaymentHistoryModal(button.dataset.id)))
   document.querySelectorAll('.assign-pending').forEach(button => button.addEventListener('click', () => assignPendingPaymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
@@ -452,6 +491,11 @@ function bindShell() {
   })
   document.querySelector('#payment-month-filter')?.addEventListener('change', event => {
     state.paymentMonth = event.target.value
+    shellView()
+    switchSection('payments')
+  })
+  document.querySelector('#payment-history-range')?.addEventListener('change', event => {
+    state.paymentHistoryRange = event.target.value
     shellView()
     switchSection('payments')
   })
@@ -844,6 +888,74 @@ function cancelPaymentModal(paymentId) {
     }
     modal.remove()
     await refresh('Paiement annulé : il reste visible dans l’historique mais n’est plus comptabilisé.')
+  })
+}
+
+function studentPaymentHistoryModal(studentId) {
+  const student = state.students.find(x => x.id === studentId)
+  if (!student) return toast('Élève introuvable.', true)
+  const enrollments = state.enrollments.filter(x => x.student_id === studentId)
+  const enrollmentIds = new Set(enrollments.map(x => x.id))
+  const payments = state.payments.filter(x => enrollmentIds.has(x.enrollment_id)).sort((a, b) => new Date(b.paid_at) - new Date(a.paid_at))
+  const audit = state.paymentAudit.filter(entry => enrollmentIds.has(entry.enrollment_id)).sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at))
+  const activeTotal = payments.filter(x => !paymentIsCancelled(x)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
+  const rows = payments.map(payment => {
+    const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+    const cancelled = paymentIsCancelled(payment)
+    return `<tr><td>${dateTime(payment.paid_at)}</td><td>${esc(enrollment?.dossier_code || '—')}</td><td><strong>${money(payment.amount)}</strong></td><td>${esc(paymentMethodLabel(payment.method))}</td><td>${cancelled ? '<span class="badge due">Annulé</span>' : '<span class="badge ok">Comptabilisé</span>'}</td><td>${paymentActionButtons(payment)}</td></tr>`
+  }).join('')
+  const timeline = audit.map(entry => `<li class="audit-entry"><div><span class="badge ${entry.action === 'cancelled' || entry.action === 'deleted' ? 'due' : entry.action === 'updated' ? 'warning' : 'ok'}">${esc(auditActionLabel(entry.action))}</span><strong>${dateTime(entry.occurred_at)}</strong></div><p>${esc(paymentAuditDescription(entry))}</p><small>Par : ${esc(staffName(entry.actor_id))}</small></li>`).join('')
+  const modal = showModal(`Historique — ${esc(student.last_name)} ${esc(student.first_name)}`, `<div class="history-overview"><div><span>Total actuellement comptabilisé</span><strong>${money(activeTotal)}</strong></div><div><span>Versements</span><strong>${payments.length}</strong></div><div><span>Actions enregistrées</span><strong>${audit.length}</strong></div></div><section class="history-detail"><h3>Ses reçus et versements</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Dossier</th><th>Montant</th><th>Moyen</th><th>État</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun versement associé à cet élève.</div>'}</div></section><section class="history-detail"><h3>Journal des opérations</h3><p class="muted">Chaque ajout, modification, annulation ou suppression est conservé ici.</p><ol class="audit-list">${timeline || '<li class="empty">Aucune opération enregistrée.</li>'}</ol></section>`)
+  modal.querySelectorAll('.receipt-payment').forEach(button => button.addEventListener('click', () => downloadReceipt(button.dataset.id)))
+  modal.querySelectorAll('.edit-payment').forEach(button => button.addEventListener('click', () => { modal.remove(); editPaymentModal(button.dataset.id) }))
+  modal.querySelectorAll('.cancel-payment').forEach(button => button.addEventListener('click', () => { modal.remove(); cancelPaymentModal(button.dataset.id) }))
+  modal.querySelectorAll('.delete-payment').forEach(button => button.addEventListener('click', () => { modal.remove(); deletePaymentModal(button.dataset.id) }))
+}
+
+function editPaymentModal(paymentId) {
+  const payment = state.payments.find(x => x.id === paymentId)
+  if (!payment || paymentIsCancelled(payment)) return toast('Seul un paiement non annulé peut être modifié.', true)
+  const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+  if (!enrollment) return toast('Le dossier de ce paiement est introuvable.', true)
+  const summary = financialStatus(enrollment)
+  const allowedAmount = summary.remaining + Number(payment.amount || 0)
+  const monthOptions = Array.from({ length: monthsFor(enrollment) }, (_, i) => i + 1).map(month => `<option value="${month}" ${payment.billing_month === month ? 'selected' : ''}>Mois ${month}</option>`).join('')
+  const dateValue = new Date(payment.paid_at).toISOString().slice(0, 10)
+  const modal = showModal('Modifier un versement', `<p class="muted modal-context">Toute modification reste inscrite dans le journal de l’élève. Montant maximum autorisé : <strong>${money(allowedAmount)}</strong>.</p><form id="edit-payment-form"><div class="grid-2"><label>Montant versé<input name="amount" type="number" min="1" max="${allowedAmount}" value="${Number(payment.amount)}" required></label><label>Moyen de paiement<select name="method"><option value="especes" ${payment.method === 'especes' ? 'selected' : ''}>Espèces</option><option value="mobile_money" ${payment.method === 'mobile_money' ? 'selected' : ''}>Mobile Money</option><option value="banque" ${payment.method === 'banque' ? 'selected' : ''}>Banque</option><option value="carte" ${payment.method === 'carte' ? 'selected' : ''}>Carte bancaire</option></select></label><label>Date<input name="paid_at" type="date" value="${dateValue}" required></label><label>Référence<input name="reference" value="${esc(payment.reference || '')}"></label><label>Mois concerné<select name="billing_month"><option value="">Paiement global</option>${monthOptions}</select></label><label>Tranche<select name="installment"><option value="">Paiement complet / non précisé</option><option value="1" ${payment.installment === 1 ? 'selected' : ''}>Tranche 1</option><option value="2" ${payment.installment === 2 ? 'selected' : ''}>Tranche 2</option></select></label></div><label style="margin-top:15px">Notes<textarea name="notes" rows="3">${esc(payment.notes || '')}</textarea></label><p id="edit-payment-error" class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer la modification</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#edit-payment-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    data.amount = Number(data.amount)
+    if (data.amount > allowedAmount) return modal.querySelector('#edit-payment-error').textContent = `Le montant dépasse le maximum autorisé (${money(allowedAmount)}).`
+    data.paid_at = new Date(`${data.paid_at}T12:00:00`).toISOString()
+    data.billing_month = data.billing_month ? Number(data.billing_month) : null
+    data.installment = data.installment ? Number(data.installment) : null
+    data.payment_stage = data.installment === 1 ? 'tranche_1' : data.installment === 2 ? 'tranche_2' : (data.billing_month ? 'mensualite' : 'versement')
+    data.reference = data.reference || null
+    data.notes = data.notes || null
+    const { error } = await supabase.from('payments').update(data).eq('id', paymentId).select('id').single()
+    if (error) return modal.querySelector('#edit-payment-error').textContent = error.message
+    modal.remove()
+    await refresh('Versement modifié. La trace de la modification est conservée.')
+  })
+}
+
+function deletePaymentModal(paymentId) {
+  const payment = state.payments.find(x => x.id === paymentId)
+  if (!payment) return toast('Paiement introuvable.', true)
+  if (!canPermanentlyDeletePayments()) return toast('Seul un administrateur peut supprimer définitivement un paiement.', true)
+  const modal = showModal('⚠ Supprimer définitivement un paiement', `<div class="danger-zone"><h3>Cette suppression est définitive.</h3><p>Le versement de <strong>${money(payment.amount)}</strong> sera retiré de la liste et des calculs. Son empreinte restera dans le journal d’audit avec l’ancienne valeur et l’heure de suppression.</p><label>Pour confirmer, saisissez exactement <strong>SUPPRIMER</strong><input id="delete-payment-confirmation" autocomplete="off"></label><p id="delete-payment-error" class="error"></p></div><div class="modal-actions"><button type="button" class="secondary cancel">Retour</button><button id="confirm-delete-payment" class="danger" type="button" disabled>Supprimer définitivement</button></div>`)
+  const confirmation = modal.querySelector('#delete-payment-confirmation')
+  const submit = modal.querySelector('#confirm-delete-payment')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  confirmation.addEventListener('input', () => { submit.disabled = confirmation.value.trim() !== 'SUPPRIMER' })
+  submit.addEventListener('click', async () => {
+    submit.disabled = true
+    const { error } = await supabase.from('payments').delete().eq('id', paymentId)
+    if (error) { modal.querySelector('#delete-payment-error').textContent = error.message; submit.disabled = false; return }
+    modal.remove()
+    await refresh('Paiement supprimé. Son empreinte est conservée dans le journal d’audit.')
   })
 }
 
