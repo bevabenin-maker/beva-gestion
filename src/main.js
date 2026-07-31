@@ -18,6 +18,22 @@ const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'A
 const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentiel'
 const stageLabel = stage => ({ inscription: 'Inscription', premier_mois: '1er mois', mensualite: 'Mensualité', tranche_1: 'Tranche 1', tranche_2: 'Tranche 2', solde: 'Solde', versement: 'Versement' }[stage] || stage)
 const today = () => new Date().toISOString().slice(0, 10)
+const ageOf = birthDate => {
+  if (!birthDate) return null
+  const birth = new Date(`${birthDate}T12:00:00`)
+  if (Number.isNaN(birth.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - birth.getFullYear()
+  const birthdayPassed = now.getMonth() > birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate())
+  if (!birthdayPassed) age -= 1
+  return age >= 0 && age < 120 ? age : null
+}
+const studentAge = student => {
+  const calculated = ageOf(student?.birth_date)
+  if (calculated !== null) return calculated
+  const recorded = Number(student?.age)
+  return Number.isInteger(recorded) && recorded >= 0 && recorded < 120 ? recorded : null
+}
 const selectedIntake = () => state.intakes.find(x => x.id === state.intakeFilter) || null
 // Keep every intake in the same visual order.  The database renumbers students
 // 1, 2, 3… after a deletion; this view deliberately shows the highest number
@@ -341,12 +357,50 @@ function shellView() {
 }
 
 function studentPanel(title, students, searchable = false) {
-  return `<div class="panel">
+  const ageStats = studentAgeStats(students)
+  return `${searchable ? ageStatisticsPanel(ageStats) : ''}<div class="panel student-panel">
     <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"></div>' : ''}</div>
-    <div class="table-wrap"><table><thead><tr><th>N°</th><th>Nom et prénom</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
+    <div class="mobile-student-list">${studentMobileCards(students)}</div>
+    <div class="table-wrap desktop-table"><table><thead><tr><th>N°</th><th>Nom et prénom</th><th>Âge</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
     <tbody id="${searchable ? 'student-table' : 'recent-table'}">${studentRows(students)}</tbody></table>
     ${students.length ? '' : '<div class="empty">Aucun étudiant enregistré.</div>'}</div>
   </div>`
+}
+
+function studentAgeStats(students) {
+  const groups = [
+    { label: 'Moins de 18 ans', min: 0, max: 17, count: 0 },
+    { label: '18 à 24 ans', min: 18, max: 24, count: 0 },
+    { label: '25 à 34 ans', min: 25, max: 34, count: 0 },
+    { label: '35 ans et plus', min: 35, max: Infinity, count: 0 }
+  ]
+  let known = 0
+  let totalAge = 0
+  students.forEach(student => {
+    const age = studentAge(student)
+    if (age === null) return
+    known += 1
+    totalAge += age
+    const group = groups.find(item => age >= item.min && age <= item.max)
+    if (group) group.count += 1
+  })
+  return { groups, known, missing: Math.max(0, students.length - known), average: known ? Math.round(totalAge / known) : null }
+}
+
+function ageStatisticsPanel(stats) {
+  const maximum = Math.max(1, ...stats.groups.map(item => item.count))
+  const groups = stats.groups.map(item => `<div class="age-stat-row"><div><strong>${item.label}</strong><span>${item.count} étudiant${item.count > 1 ? 's' : ''}</span></div><div class="age-bar" aria-label="${esc(item.label)} : ${item.count}"><i style="width:${Math.round(item.count / maximum * 100)}%"></i></div></div>`).join('')
+  return `<section class="panel age-statistics"><div class="panel-head"><div><h2>Répartition des étudiants par âge</h2><p class="muted">Statistiques de la vague sélectionnée, calculées à partir des dates de naissance enregistrées.</p></div></div><div class="age-stat-summary"><div><span>Âge moyen</span><strong>${stats.average === null ? '—' : `${stats.average} ans`}</strong></div><div><span>Âge renseigné</span><strong>${stats.known}</strong></div><div><span>À compléter</span><strong>${stats.missing}</strong></div></div><div class="age-stat-list">${groups}</div></section>`
+}
+
+function studentMobileCards(students) {
+  if (!students.length) return '<div class="empty">Aucun étudiant enregistré.</div>'
+  return students.map(student => {
+    const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
+    const age = studentAge(student)
+    const statusClass = student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'
+    return `<article class="student-mobile-card"><div><span class="code">N° ${esc(student.intake_student_number || '—')}</span><span class="badge ${statusClass}">${esc(studentStatusLabel(student.status))}</span></div><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><dl><div><dt>Âge</dt><dd>${age === null ? 'Non renseigné' : `${age} ans`}</dd></div><div><dt>Formations</dt><dd>${items.length} / 4</dd></div><div><dt>Téléphone</dt><dd>${esc(student.phone || '—')}</dd></div></dl></article>`
+  }).join('')
 }
 
 function studentRows(students) {
@@ -356,6 +410,7 @@ function studentRows(students) {
     return `<tr>
       <td class="code">${student.intake_student_number ? 'N° ' + esc(student.intake_student_number) : esc(student.registration_code)}<small class="legacy-code">${esc(student.registration_code)}</small></td>
       <td><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><small class="legacy-code">Historique et reçus</small></td>
+      <td>${studentAge(student) === null ? '—' : `${studentAge(student)} ans`}</td>
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
@@ -519,10 +574,13 @@ function bindShell() {
   document.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   document.querySelector('#student-search')?.addEventListener('input', event => {
     const q = event.target.value.trim().toLowerCase()
-    const result = state.students.filter(x => [x.registration_code, x.first_name, x.last_name, x.phone].some(v => String(v || '').toLowerCase().includes(q)))
-    document.querySelector('#student-table').innerHTML = studentRows(result)
-    document.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
-    document.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
+    const result = scopedStudents().filter(x => [x.registration_code, x.first_name, x.last_name, x.phone].some(v => String(v || '').toLowerCase().includes(q)))
+    const panel = document.querySelector('#students')
+    panel.querySelector('#student-table').innerHTML = studentRows(result)
+    panel.querySelector('.mobile-student-list').innerHTML = studentMobileCards(result)
+    panel.querySelectorAll('.student-payment-history').forEach(button => button.addEventListener('click', () => studentPaymentHistoryModal(button.dataset.id)))
+    panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
+    panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   })
 }
 
