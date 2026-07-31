@@ -72,7 +72,10 @@ function receiptNumber(payment) {
   return `BEVA-${new Date(payment.paid_at).getFullYear()}-${String(payment.id || '').replaceAll('-', '').slice(0, 8).toUpperCase()}`
 }
 
-const receiptAsset = file => new URL(`${import.meta.env.BASE_URL}brand/${file}`, window.location.origin).href
+// GitHub Pages hosts the application inside /beva-gestion/. Resolving from the
+// current page (rather than from the domain root) keeps the logo and stamp in
+// the receipt on both the site and a local preview.
+const receiptAsset = file => new URL(`${import.meta.env.BASE_URL}brand/${file}`, window.location.href).href
 const paymentMethodLabel = method => ({ especes: 'Espèces', mobile_money: 'Mobile Money', banque: 'Virement bancaire', carte: 'Carte bancaire' }[method] || String(method || '—').replaceAll('_', ' '))
 
 function receiptHtml(payment) {
@@ -285,7 +288,7 @@ function shellView() {
       <main class="main">
         <header class="topbar">
           <div><h1 id="page-title">Tableau de bord</h1><p id="page-subtitle" class="muted">Vue générale de l’activité BEVA</p></div>
-          <div class="topbar-actions"><select id="intake-filter" aria-label="Choisir une vague">${state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button id="add-student-top" class="primary">+ Nouvel étudiant</button></div>
+          <div class="topbar-actions"><select id="intake-filter" aria-label="Choisir une vague">${state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button id="add-student-top" class="primary desktop-only">+ Nouvel étudiant</button></div>
         </header>
         <section id="dashboard" class="section">
           <div class="cards">
@@ -329,7 +332,7 @@ function studentRows(students) {
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
-      <td class="row-actions"><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
+      <td class="row-actions desktop-only"><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
     </tr>`
   }).join('')
 }
@@ -376,7 +379,16 @@ function paymentPanel() {
     return counts
   }, { 'Payé': 0, 'Partiel': 0, 'Non payé': 0 }) : null
   const monthlySummary = monthCounts ? `<div class="payment-summary"><strong>Mois ${selectedMonth} :</strong><span class="badge ok">${monthCounts.Payé} payé${monthCounts.Payé > 1 ? 's' : ''}</span><span class="badge warning">${monthCounts.Partiel} partiel${monthCounts.Partiel > 1 ? 's' : ''}</span><span class="badge due">${monthCounts['Non payé']} non payé${monthCounts['Non payé'] > 1 ? 's' : ''}</span></div>` : ''
-  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="table-wrap">
+  const mobileCards = displayed.map(enrollment => {
+    const student = studentFor(enrollment)
+    const formation = formationFor(enrollment)
+    const summary = financialStatus(enrollment)
+    const progress = monthlyProgress(enrollment, selectedMonth)
+    const status = selectedMonth ? monthlyPaymentState(enrollment, selectedMonth) : summary
+    const target = selectedMonth ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
+    return `<article class="payment-mobile-card"><div><strong>${esc(enrollment.dossier_code)}</strong><span class="badge ${status.className}">${status.label}</span></div><p>${esc(student ? `${student.last_name} ${student.first_name}` : '—')} · ${esc(formation?.name || '—')}</p><dl><div><dt>Payé${selectedMonth ? ' / attendu' : ''}</dt><dd>${target}</dd></div><div><dt>Reste dû</dt><dd>${money(summary.remaining)}</dd></div><div><dt>Frais totaux</dt><dd>${money(summary.due)}</dd></div></dl></article>`
+  }).join('')
+  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
@@ -389,7 +401,7 @@ function pendingPaymentPanel() {
     const formation = state.formations.find(x => x.id === payment.pending_formation_id)
     return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td><strong>${esc(payment.pending_last_name)} ${esc(payment.pending_first_name)}</strong><small class="legacy-code">${esc(payment.pending_phone || 'Sans téléphone')}</small></td><td>${esc(formation?.name || 'Formation non précisée')}</td><td><strong>${money(payment.amount)}</strong></td><td>${payment.pending_scholarship_status ? 'Boursier' : 'Non boursier'}</td><td class="row-actions"><button class="primary assign-pending" data-id="${payment.id}">Affecter à une vague</button><button class="link-btn receipt-payment" data-id="${payment.id}">Reçu PDF</button></td></tr>`
   }).join('')
-  return `<div class="panel pending-panel"><div class="panel-head"><div><h2>Paiements en attente d’affectation</h2><p class="muted">Ces montants sont encaissés, mais ne comptent dans aucune vague tant que l’élève n’y est pas affecté.</p></div><button id="add-pending-payment" class="primary">+ Paiement en attente</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Personne</th><th>Formation</th><th>Montant</th><th>Bourse</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement en attente.</div>'}</div></div>`
+  return `<div class="panel pending-panel"><div class="panel-head"><div><h2>Paiements en attente d’affectation</h2><p class="muted">Ces montants sont encaissés, mais ne comptent dans aucune vague tant que l’élève n’y est pas affecté.</p></div><button id="add-pending-payment" class="primary desktop-only">+ Paiement en attente</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Personne</th><th>Formation</th><th>Montant</th><th>Bourse</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement en attente.</div>'}</div></div>`
 }
 
 function formationPanel() {
@@ -550,11 +562,15 @@ function assignPendingPaymentModal(paymentId) {
 }
 
 function returnStudentModal() {
-  const sources = state.enrollments.filter(x => x.status === 'abandonne' && x.formation_id).map(x => {
+  // An abandonment can be recorded either on the student or on a particular
+  // dossier. Both cases must be available for a return.
+  const sourceEnrollments = state.enrollments.filter(x => x.formation_id && (x.status === 'abandonne' || studentFor(x)?.status === 'abandonne'))
+  if (!sourceEnrollments.length) return toast('Aucun dossier abandonné n’est disponible pour une reprise.', true)
+  const sources = sourceEnrollments.map(x => {
     const student = studentFor(x); const formation = formationFor(x)
-    return `<option value="${x.id}">${esc(student?.last_name)} ${esc(student?.first_name)} — ${esc(formation?.name || 'Formation')}</option>`
+    const reason = x.status === 'abandonne' ? 'dossier abandonné' : 'étudiant abandonné'
+    return `<option value="${x.id}">${esc(student?.last_name)} ${esc(student?.first_name)} — ${esc(formation?.name || 'Formation')} (${reason})</option>`
   }).join('')
-  if (!sources) return toast('Aucun dossier abandonné n’est disponible pour une reprise.', true)
   const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
   const modal = showModal('Créer une reprise de formation', `<p class="muted modal-context">L’ancien dossier reste dans sa vague et dans son historique. La reprise crée un nouvel élève numéroté dans la nouvelle vague, avec seulement les mois à refaire.</p><form id="return-form"><div class="grid-2"><label>Ancien dossier<select name="source_enrollment_id" required>${sources}</select></label><label>Nouvelle vague<select name="intake_id" required>${intakeOptions}</select></label><label>Reprendre à partir de<select name="resumes_from_month"><option value="1">Mois 1 — recommencer</option><option value="2">Mois 2 — mois 1 déjà acquis</option><option value="3">Mois 3 — mois 1 et 2 déjà acquis</option></select></label><label>Mode de suivi<select name="learning_mode"><option value="presentiel">Présentiel</option><option value="en_ligne">En ligne</option></select></label></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Créer la reprise</button></div></form>`)
   modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
@@ -667,8 +683,10 @@ function manageStudentModal(studentId) {
         <div class="fee-summary"><span>Frais totaux</span><strong class="slot-fee-display" data-id="${slot.id}">${money(totalFee)}</strong><small>${slot.scholarship_status ? 'Bourse BEVA' : 'Tarif standard BEVA'}</small></div>
       </div><div class="dossier-actions"><button class="primary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : '<button class="secondary save-slot" data-pay-after="true" data-id="' + slot.id + '">Enregistrer + paiement</button>'}</div></article>`
   }).join('')
+  const studentPayments = state.payments.filter(payment => slots.some(slot => slot.id === payment.enrollment_id))
   const deleteButton = canDeleteStudents() ? '<button id="delete-student-from-modal" class="danger" type="button">Supprimer cet élève</button>' : ''
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button>${deleteButton}</div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
+  const pendingButton = studentPayments.length ? '<button id="move-student-to-pending" class="secondary" type="button">Mettre ses paiements en attente</button>' : ''
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button>${pendingButton}${deleteButton}</div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
     const button = event.currentTarget
     button.disabled = true
@@ -715,6 +733,53 @@ function manageStudentModal(studentId) {
   modal.querySelector('#delete-student-from-modal')?.addEventListener('click', () => {
     modal.remove()
     deleteStudentModal(studentId)
+  })
+  modal.querySelector('#move-student-to-pending')?.addEventListener('click', () => {
+    modal.remove()
+    moveStudentToPendingModal(studentId)
+  })
+}
+
+function moveStudentToPendingModal(studentId) {
+  const student = state.students.find(x => x.id === studentId)
+  if (!student) return toast('Élève introuvable.', true)
+  const intake = state.intakes.find(x => x.id === student.intake_id)
+  const enrollments = state.enrollments.filter(x => x.student_id === studentId)
+  const paidEnrollments = enrollments.filter(x => enrollmentPayments(x.id).length)
+  const payments = paidEnrollments.flatMap(x => enrollmentPayments(x.id))
+  if (!payments.length) return toast('Cet élève n’a aucun paiement à placer en attente.', true)
+  const amount = payments.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const fullName = `${student.last_name} ${student.first_name}`.trim()
+  const modal = showModal('⚠ Mettre les paiements en attente', `<div class="danger-zone"><h3>Retirer l’élève de la vague</h3><p><strong>${esc(fullName)}</strong> sera retiré de <strong>${esc(intake?.name || 'sa vague')}</strong>. Ses <strong>${payments.length} versement(s)</strong>, soit <strong>${money(amount)}</strong>, resteront conservés dans « Paiements en attente d’affectation ».</p><p>Il n’apparaîtra plus dans cette vague. Plus tard, chaque versement pourra être affecté à une nouvelle vague sans ressaisir l’argent.</p><label>Pour confirmer, saisissez exactement <strong>METTRE EN ATTENTE</strong><input id="pending-confirmation" autocomplete="off"></label><p id="pending-move-error" class="error"></p></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button id="confirm-pending-move" class="danger" type="button" disabled>Retirer de la vague</button></div>`)
+  const confirmation = modal.querySelector('#pending-confirmation')
+  const submit = modal.querySelector('#confirm-pending-move')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  confirmation.addEventListener('input', () => { submit.disabled = confirmation.value.trim() !== 'METTRE EN ATTENTE' })
+  submit.addEventListener('click', async () => {
+    submit.disabled = true
+    const results = await Promise.all(paidEnrollments.map(enrollment => supabase.from('payments').update({
+      enrollment_id: null,
+      payment_context: 'pending',
+      pending_first_name: student.first_name,
+      pending_last_name: student.last_name,
+      pending_phone: student.phone || null,
+      pending_formation_id: enrollment.formation_id || null,
+      pending_scholarship_status: Boolean(enrollment.scholarship_status)
+    }).eq('enrollment_id', enrollment.id).select('id')))
+    const failed = results.find(result => result.error)
+    if (failed) {
+      modal.querySelector('#pending-move-error').textContent = failed.error.message
+      submit.disabled = false
+      return
+    }
+    const { error } = await supabase.from('students').delete().eq('id', studentId)
+    if (error) {
+      modal.querySelector('#pending-move-error').textContent = `Les paiements sont en attente, mais l’élève doit encore être supprimé : ${error.message}`
+      submit.disabled = false
+      return
+    }
+    modal.remove()
+    await refresh('Élève retiré de la vague ; ses paiements sont en attente d’affectation.')
   })
 }
 
