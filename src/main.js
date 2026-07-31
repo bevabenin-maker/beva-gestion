@@ -13,6 +13,11 @@ const state = { user: null, staff: null, students: [], enrollments: [], formatio
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
 const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role)
+const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon', archive: 'Archivé' }[status] || status)
+const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status)
+const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentiel'
+const planLabel = plan => ({ comptant: 'Paiement total', mensuel: 'Mensuel', deux_tranches_mois: '2 tranches / mois', non_precise: 'Non précisé' }[plan] || plan)
+const stageLabel = stage => ({ inscription: 'Inscription', premier_mois: '1er mois', mensualite: 'Mensualité', tranche_1: 'Tranche 1', tranche_2: 'Tranche 2', solde: 'Solde', versement: 'Versement' }[stage] || stage)
 const today = () => new Date().toISOString().slice(0, 10)
 const selectedIntake = () => state.intakeFilter === 'all' ? null : state.intakes.find(x => x.id === state.intakeFilter)
 const scopedStudents = () => state.intakeFilter === 'all' ? state.students : state.students.filter(x => x.intake_id === state.intakeFilter)
@@ -23,6 +28,13 @@ const scopedEnrollments = () => {
 const scopedPayments = () => {
   const ids = new Set(scopedEnrollments().map(x => x.id))
   return state.payments.filter(x => ids.has(x.enrollment_id))
+}
+const enrollmentPayments = enrollmentId => state.payments.filter(x => x.enrollment_id === enrollmentId)
+function financialStatus(enrollment) {
+  const paid = enrollmentPayments(enrollment.id).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const due = Number(enrollment.agreed_fee || 0)
+  const remaining = Math.max(0, due - paid)
+  return { paid, due, remaining, label: due > 0 && remaining === 0 ? 'Soldé' : paid > 0 ? 'Partiel' : 'Non payé', className: due > 0 && remaining === 0 ? 'ok' : paid > 0 ? 'warning' : 'due' }
 }
 
 function toast(message, bad = false) {
@@ -232,13 +244,23 @@ function studentRows(students) {
       <td><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></td>
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
-      <td><span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
+      <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
       <td><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button></td>
     </tr>`
   }).join('')
 }
 
 function paymentPanel() {
+  const enrollmentRows = scopedEnrollments().filter(x => x.status !== 'disponible').map(enrollment => {
+    const student = state.students.find(x => x.id === enrollment.student_id)
+    const formation = state.formations.find(x => x.id === enrollment.formation_id)
+    const summary = financialStatus(enrollment)
+    return `<tr><td class="code">${esc(enrollment.dossier_code)}</td><td><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong></td>
+      <td>${esc(formation?.name || '—')}</td><td><span class="badge">${learningModeLabel(enrollment.learning_mode)}</span></td>
+      <td><span class="badge ${enrollment.scholarship_status ? 'ok' : ''}">${enrollment.scholarship_status ? 'Boursier' : 'Non boursier'}</span></td>
+      <td>${esc(planLabel(enrollment.payment_plan))}</td><td>${money(summary.due)}</td><td>${money(summary.paid)}</td><td>${money(summary.remaining)}</td>
+      <td><span class="badge ${summary.className}">${summary.label}</span></td><td><button class="link-btn pay-slot" data-id="${enrollment.id}">Ajouter paiement</button></td></tr>`
+  }).join('')
   const rows = scopedPayments().map(payment => {
     const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
     const student = enrollment && state.students.find(x => x.id === enrollment.student_id)
@@ -246,10 +268,13 @@ function paymentPanel() {
     const remaining = Math.max(0, Number(enrollment?.agreed_fee || 0) - alreadyPaid)
     return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
       <td>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
-      <td>${money(remaining)}</td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
+      <td>${money(remaining)}</td><td><span class="badge">${esc(stageLabel(payment.payment_stage))}</span></td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
   }).join('')
-  return `<div class="panel"><div class="panel-head"><h2>Historique des paiements</h2></div><div class="table-wrap">
-    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Moyen</th><th>Référence</th></tr></thead>
+  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Chaque dossier est suivi séparément, même sans paiement.</p></div></div><div class="table-wrap">
+    <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Mode</th><th>Bourse</th><th>Plan</th><th>Frais</th><th>Payé</th><th>Reste</th><th>État</th><th></th></tr></thead>
+    <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucune formation dans cette vague.</div>'}</div></div>
+    <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
+    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Nature</th><th>Moyen</th><th>Référence</th></tr></thead>
     <tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement enregistré.</div>'}</div></div>`
 }
 
@@ -277,6 +302,7 @@ function bindShell() {
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
+  document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
     shellView()
@@ -311,14 +337,15 @@ function showModal(title, body) {
 }
 
 function newStudentModal() {
-  const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+  const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${(x.id === state.intakeFilter || (state.intakeFilter === 'all' && x.active)) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
   const modal = showModal('Inscrire un étudiant', `<form id="student-form">
     <div class="grid-2">
       <label>Nom<input name="last_name" required></label><label>Prénom(s)<input name="first_name" required></label>
       <label>Téléphone<input name="phone" inputmode="tel"></label><label>Adresse e-mail<input name="email" type="email"></label>
       <label>Sexe<select name="sex"><option value="">Non précisé</option><option>Femme</option><option>Homme</option></select></label>
       <label>Date de naissance<input name="birth_date" type="date"></label>
-      <label>Rentrée / promotion<select name="intake_id"><option value="">Aucune</option>${intakeOptions}</select></label>
+      <label>Vague de formation<select name="intake_id" required><option value="">Choisir une vague</option>${intakeOptions}</select></label>
+      <label>Statut de l’étudiant<select name="status"><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="abandonne">Abandon</option></select></label>
       <label>Adresse<input name="address"></label>
     </div>
     <label style="margin-top:15px">Notes<textarea name="notes" rows="3"></textarea></label>
@@ -367,21 +394,37 @@ function manageStudentModal(studentId) {
   const slots = state.enrollments.filter(x => x.student_id === studentId).sort((a, b) => a.slot - b.slot)
   const rows = slots.map(slot => {
     const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}" ${x.id === slot.formation_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
-    const paid = state.payments.filter(x => x.enrollment_id === slot.id).reduce((s, x) => s + Number(x.amount), 0)
+    const summary = financialStatus(slot)
     return `<tr><td class="code">${esc(slot.dossier_code)}${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(slot.legacy_code)}</small>` : ''}</td><td class="formation-cell"><select class="slot-formation" data-id="${slot.id}">
       <option value="">Disponible</option>${formationOptions}</select></td><td><input class="slot-fee" data-id="${slot.id}" type="number" min="0" value="${slot.agreed_fee}"></td>
-      <td>${money(paid)}</td><td>${money(Math.max(0, Number(slot.agreed_fee) - paid))}</td>
+      <td><select class="slot-mode" data-id="${slot.id}"><option value="presentiel" ${slot.learning_mode === 'presentiel' ? 'selected' : ''}>Présentiel</option><option value="en_ligne" ${slot.learning_mode === 'en_ligne' ? 'selected' : ''}>En ligne</option></select></td>
+      <td><select class="slot-scholarship" data-id="${slot.id}"><option value="false" ${!slot.scholarship_status ? 'selected' : ''}>Non</option><option value="true" ${slot.scholarship_status ? 'selected' : ''}>Oui</option></select></td>
+      <td><select class="slot-plan" data-id="${slot.id}"><option value="non_precise" ${slot.payment_plan === 'non_precise' ? 'selected' : ''}>Non précisé</option><option value="comptant" ${slot.payment_plan === 'comptant' ? 'selected' : ''}>Paiement total</option><option value="mensuel" ${slot.payment_plan === 'mensuel' ? 'selected' : ''}>Mensuel</option><option value="deux_tranches_mois" ${slot.payment_plan === 'deux_tranches_mois' ? 'selected' : ''}>2 tranches / mois</option></select></td>
+      <td><select class="slot-status" data-id="${slot.id}"><option value="disponible" ${slot.status === 'disponible' ? 'selected' : ''}>Disponible</option><option value="inscrit" ${slot.status === 'inscrit' ? 'selected' : ''}>Actif</option><option value="termine" ${slot.status === 'termine' ? 'selected' : ''}>Terminé</option><option value="abandonne" ${slot.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></td>
+      <td>${money(summary.paid)}</td><td>${money(summary.remaining)}<small class="legacy-code">${summary.label}</small></td>
       <td><button class="link-btn save-slot" data-id="${slot.id}">Sauver</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">Paiement</button>` : ''}</td></tr>`
   }).join('')
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — ${esc(student.registration_code)}`, `<p class="muted modal-context">Vague : <strong>${esc(intake?.name || 'Non classé')}</strong> · Jusqu’à quatre formations sont suivies séparément.</p>
-    <div class="table-wrap"><table><thead><tr><th>Dossier</th><th>Formation</th><th>Tarif convenu</th><th>Payé</th><th>Reste</th><th>Action</th></tr></thead>
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — ${esc(student.registration_code)}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option><option value="archive" ${student.status === 'archive' ? 'selected' : ''}>Archivé</option></select></label><button id="save-student-status" class="secondary">Sauver le statut</button></div><p class="muted modal-context">Vague : <strong>${esc(intake?.name || 'Non classé')}</strong> · Bourse, suivi en ligne et paiements sont définis pour chaque formation.</p>
+    <div class="table-wrap"><table><thead><tr><th>Dossier</th><th>Formation</th><th>Frais</th><th>Mode</th><th>Boursier</th><th>Plan de paiement</th><th>Statut</th><th>Payé</th><th>Reste</th><th>Action</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`)
+  modal.querySelector('#save-student-status').addEventListener('click', async () => {
+    const { error } = await supabase.from('students').update({ status: modal.querySelector('#student-status').value }).eq('id', studentId)
+    if (error) return toast(error.message, true)
+    modal.remove()
+    await refresh('Statut de l’étudiant mis à jour.')
+  })
   modal.querySelectorAll('.save-slot').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.id
     const formationId = modal.querySelector(`.slot-formation[data-id="${id}"]`).value || null
     const fee = Number(modal.querySelector(`.slot-fee[data-id="${id}"]`).value || 0)
+    const status = modal.querySelector(`.slot-status[data-id="${id}"]`).value
     const { error } = await supabase.from('enrollments').update({
-      formation_id: formationId, agreed_fee: fee, status: formationId ? 'inscrit' : 'disponible', enrolled_at: formationId ? today() : null
+      formation_id: formationId, agreed_fee: fee,
+      learning_mode: modal.querySelector(`.slot-mode[data-id="${id}"]`).value,
+      scholarship_status: modal.querySelector(`.slot-scholarship[data-id="${id}"]`).value === 'true',
+      payment_plan: modal.querySelector(`.slot-plan[data-id="${id}"]`).value,
+      status: formationId ? (status === 'disponible' ? 'inscrit' : status) : 'disponible',
+      enrolled_at: formationId ? (slot.enrolled_at || today()) : null
     }).eq('id', id)
     if (error) return toast(error.message, true)
     modal.remove()
@@ -395,12 +438,14 @@ function manageStudentModal(studentId) {
 
 function paymentModal(enrollmentId) {
   const enrollment = state.enrollments.find(x => x.id === enrollmentId)
-  const modal = showModal(`Paiement — ${esc(enrollment.dossier_code)}`, `<form id="payment-form">
+  const summary = financialStatus(enrollment)
+  const modal = showModal(`Paiement — ${esc(enrollment.dossier_code)}`, `<p class="muted modal-context">Montant convenu : <strong>${money(summary.due)}</strong> · Déjà payé : <strong>${money(summary.paid)}</strong> · Reste : <strong>${money(summary.remaining)}</strong></p><form id="payment-form">
     <div class="grid-2">
       <label>Montant versé<input name="amount" type="number" min="1" required></label>
       <label>Moyen de paiement<select name="method"><option value="especes">Espèces</option><option value="mobile_money">Mobile Money</option><option value="banque">Banque</option><option value="autre">Autre</option></select></label>
       <label>Date<input name="paid_at" type="date" value="${today()}" required></label>
       <label>Référence<input name="reference"></label>
+      <label>Nature du versement<select name="payment_stage"><option value="inscription">Inscription</option><option value="premier_mois">1er mois</option><option value="mensualite">Mensualité</option><option value="tranche_1">Tranche 1</option><option value="tranche_2">Tranche 2</option><option value="solde">Solde</option><option value="versement">Autre versement</option></select></label>
     </div>
     <label style="margin-top:15px">Notes<textarea name="notes" rows="3"></textarea></label>
     <div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer le paiement</button></div>
@@ -413,6 +458,7 @@ function paymentModal(enrollmentId) {
     data.enrollment_id = enrollmentId
     data.received_by = state.user.id
     data.paid_at = new Date(`${data.paid_at}T12:00:00`).toISOString()
+    if (summary.due > 0 && data.amount > summary.remaining) return toast(`Le versement dépasse le reste à payer (${money(summary.remaining)}).`, true)
     if (!data.reference) data.reference = null
     if (!data.notes) data.notes = null
     const { error } = await supabase.from('payments').insert(data)
