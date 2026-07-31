@@ -147,6 +147,7 @@ td { font-size: 14px; }
 .student-settings label { flex: 1; }
 .financial-panel + .history-panel { margin-top: 20px; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
+.payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .payment-filter { min-width: 250px; color: #3d4c61; }
 .payment-filter select { margin-top: 7px; }
 .dossier-list { display: grid; gap: 14px; }
@@ -193,6 +194,7 @@ td { font-size: 14px; }
   .dossier-card-head { display: grid; }
   .row-actions { min-width: 190px; }
   .payment-filter { width: 100%; min-width: 0; }
+  .payment-summary { line-height: 1.7; }
   .topbar { align-items: flex-start; }
   .topbar-actions { align-items: stretch; flex-direction: column; }
   .tools { flex-direction: column; }
