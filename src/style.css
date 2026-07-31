@@ -127,6 +127,8 @@ td { font-size: 14px; }
 .code { color: #0c417d; font-weight: 900; }
 .badge { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #eef3f9; color: #405574; font-size: 12px; font-weight: 800; }
 .badge.ok { color: #18724a; background: #e8f7ef; }
+.badge.warning { color: #9a6208; background: #fff4d8; }
+.badge.due { color: #a52a2a; background: #fff0f0; }
 .empty { padding: 42px 20px; color: #78879b; text-align: center; }
 .section { display: none; }
 .section.active { display: block; }
@@ -141,6 +143,10 @@ td { font-size: 14px; }
 .close { border: 0; background: transparent; color: #68778b; font-size: 25px; }
 .modal-body { padding: 22px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.student-settings { display: flex; align-items: end; gap: 12px; padding: 14px; margin-bottom: 16px; border: 1px solid #e4ebf4; border-radius: 12px; background: #f8fbff; }
+.student-settings label { flex: 1; }
+.financial-panel + .history-panel { margin-top: 20px; }
+.financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; padding: 13px 18px; border-radius: 11px; color: white; background: #18724a; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
 .toast.bad { background: #a52a2a; }
