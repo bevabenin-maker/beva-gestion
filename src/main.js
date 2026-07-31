@@ -8,12 +8,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard' }
+const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard', intakeFilter: 'all' }
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
 const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role)
 const today = () => new Date().toISOString().slice(0, 10)
+const selectedIntake = () => state.intakeFilter === 'all' ? null : state.intakes.find(x => x.id === state.intakeFilter)
+const scopedStudents = () => state.intakeFilter === 'all' ? state.students : state.students.filter(x => x.intake_id === state.intakeFilter)
+const scopedEnrollments = () => {
+  const ids = new Set(scopedStudents().map(x => x.id))
+  return state.enrollments.filter(x => ids.has(x.student_id))
+}
+const scopedPayments = () => {
+  const ids = new Set(scopedEnrollments().map(x => x.id))
+  return state.payments.filter(x => ids.has(x.enrollment_id))
+}
 
 function toast(message, bad = false) {
   const el = document.createElement('div')
@@ -155,9 +165,9 @@ async function loadData() {
 }
 
 function dashboardStats() {
-  const assigned = state.enrollments.filter(x => x.status !== 'disponible')
+  const assigned = scopedEnrollments().filter(x => x.status !== 'disponible')
   const due = assigned.reduce((sum, item) => sum + Number(item.agreed_fee || 0), 0)
-  const paid = state.payments.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const paid = scopedPayments().reduce((sum, item) => sum + Number(item.amount || 0), 0)
   return { assigned: assigned.length, due, paid, balance: Math.max(0, due - paid) }
 }
 
@@ -172,6 +182,7 @@ function shellView() {
           <button data-section="students"><span>♙ &nbsp;Étudiants</span></button>
           <button data-section="payments"><span>₣ &nbsp;Paiements</span></button>
           <button data-section="formations"><span>◫ &nbsp;Formations</span></button>
+          <button data-section="intakes"><span>◉ &nbsp;Vagues</span></button>
         </nav>
         <div class="sidebar-bottom">
           <p class="staff-name">${esc(state.staff.full_name)}</p>
@@ -181,21 +192,22 @@ function shellView() {
       </aside>
       <main class="main">
         <header class="topbar">
-          <div><h1 id="page-title">Tableau de bord</h1><p class="muted">Vue générale de l’activité BEVA</p></div>
-          <button id="add-student-top" class="primary">+ Nouvel étudiant</button>
+          <div><h1 id="page-title">Tableau de bord</h1><p id="page-subtitle" class="muted">Vue générale de l’activité BEVA</p></div>
+          <div class="topbar-actions"><select id="intake-filter" aria-label="Filtrer par vague"><option value="all">Toutes les vagues</option>${state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button id="add-student-top" class="primary">+ Nouvel étudiant</button></div>
         </header>
         <section id="dashboard" class="section">
           <div class="cards">
-            <div class="card"><div class="label">Étudiants</div><div class="value">${state.students.length}</div></div>
+            <div class="card"><div class="label">Étudiants</div><div class="value">${scopedStudents().length}</div></div>
             <div class="card"><div class="label">Formations suivies</div><div class="value">${stats.assigned}</div></div>
             <div class="card"><div class="label">Total encaissé</div><div class="value">${money(stats.paid)}</div></div>
             <div class="card"><div class="label">Reste à payer</div><div class="value">${money(stats.balance)}</div></div>
           </div>
-          ${studentPanel('Inscriptions récentes', state.students.slice(0, 8))}
+          ${studentPanel('Inscriptions récentes', scopedStudents().slice(0, 8))}
         </section>
-        <section id="students" class="section">${studentPanel('Tous les étudiants', state.students, true)}</section>
+        <section id="students" class="section">${studentPanel('Tous les étudiants', scopedStudents(), true)}</section>
         <section id="payments" class="section">${paymentPanel()}</section>
         <section id="formations" class="section">${formationPanel()}</section>
+        <section id="intakes" class="section">${intakePanel()}</section>
       </main>
     </div>`
   bindShell()
@@ -205,7 +217,7 @@ function shellView() {
 function studentPanel(title, students, searchable = false) {
   return `<div class="panel">
     <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"></div>' : ''}</div>
-    <div class="table-wrap"><table><thead><tr><th>N° étudiant</th><th>Nom et prénom</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>N° étudiant</th><th>Nom et prénom</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
     <tbody id="${searchable ? 'student-table' : 'recent-table'}">${studentRows(students)}</tbody></table>
     ${students.length ? '' : '<div class="empty">Aucun étudiant enregistré.</div>'}</div>
   </div>`
@@ -214,9 +226,11 @@ function studentPanel(title, students, searchable = false) {
 function studentRows(students) {
   return students.map(student => {
     const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
+    const intake = state.intakes.find(x => x.id === student.intake_id)
     return `<tr>
       <td class="code">${esc(student.registration_code)}</td>
       <td><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></td>
+      <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
       <td><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button></td>
@@ -225,15 +239,17 @@ function studentRows(students) {
 }
 
 function paymentPanel() {
-  const rows = state.payments.map(payment => {
+  const rows = scopedPayments().map(payment => {
     const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
     const student = enrollment && state.students.find(x => x.id === enrollment.student_id)
+    const alreadyPaid = state.payments.filter(x => x.enrollment_id === payment.enrollment_id).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const remaining = Math.max(0, Number(enrollment?.agreed_fee || 0) - alreadyPaid)
     return `<tr><td>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
       <td>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
-      <td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
+      <td>${money(remaining)}</td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
   }).join('')
   return `<div class="panel"><div class="panel-head"><h2>Historique des paiements</h2></div><div class="table-wrap">
-    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Moyen</th><th>Référence</th></tr></thead>
+    <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Moyen</th><th>Référence</th></tr></thead>
     <tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement enregistré.</div>'}</div></div>`
 }
 
@@ -244,10 +260,27 @@ function formationPanel() {
     <thead><tr><th>Formation</th><th>Tarif standard</th><th>Durée</th><th>Statut</th></tr></thead><tbody>${rows}</tbody></table></div></div>`
 }
 
+function intakePanel() {
+  const rows = state.intakes.map(intake => {
+    const studentIds = new Set(state.students.filter(x => x.intake_id === intake.id).map(x => x.id))
+    const items = state.enrollments.filter(x => studentIds.has(x.student_id) && x.status !== 'disponible')
+    const itemIds = new Set(items.map(x => x.id))
+    const paid = state.payments.filter(x => itemIds.has(x.enrollment_id)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
+    const due = items.reduce((sum, x) => sum + Number(x.agreed_fee || 0), 0)
+    return `<tr><td><strong>${esc(intake.name)}</strong></td><td>${intake.start_date ? new Date(`${intake.start_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${intake.end_date ? new Date(`${intake.end_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${studentIds.size}</td><td>${items.length}</td><td>${money(paid)}</td><td>${money(Math.max(0, due - paid))}</td><td><span class="badge ${intake.active ? 'ok' : ''}">${intake.active ? 'Active' : 'Terminée'}</span></td></tr>`
+  }).join('')
+  return `<div class="panel"><div class="panel-head"><h2>Vagues de formation</h2><button id="add-intake" class="primary">+ Nouvelle vague</button></div><div class="table-wrap"><table><thead><tr><th>Vague</th><th>Début</th><th>Fin</th><th>Étudiants</th><th>Formations</th><th>Encaissé</th><th>Reste</th><th>Statut</th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucune vague enregistrée.</div>'}</div></div>`
+}
+
 function bindShell() {
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
+  document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
+  document.querySelector('#intake-filter').addEventListener('change', event => {
+    state.intakeFilter = event.target.value
+    shellView()
+  })
   document.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
   document.querySelector('#student-search')?.addEventListener('input', event => {
     const q = event.target.value.trim().toLowerCase()
@@ -261,8 +294,10 @@ function switchSection(section) {
   state.section = section
   document.querySelectorAll('.section').forEach(el => el.classList.toggle('active', el.id === section))
   document.querySelectorAll('[data-section]').forEach(el => el.classList.toggle('active', el.dataset.section === section))
-  const titles = { dashboard: 'Tableau de bord', students: 'Étudiants', payments: 'Paiements', formations: 'Formations' }
+  const titles = { dashboard: 'Tableau de bord', students: 'Étudiants', payments: 'Paiements', formations: 'Formations', intakes: 'Vagues de formation' }
   document.querySelector('#page-title').textContent = titles[section]
+  const intake = selectedIntake()
+  document.querySelector('#page-subtitle').textContent = intake ? `Suivi de ${intake.name}` : 'Vue générale de l’activité BEVA'
 }
 
 function showModal(title, body) {
@@ -276,7 +311,7 @@ function showModal(title, body) {
 }
 
 function newStudentModal() {
-  const intakeOptions = state.intakes.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')
+  const intakeOptions = state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
   const modal = showModal('Inscrire un étudiant', `<form id="student-form">
     <div class="grid-2">
       <label>Nom<input name="last_name" required></label><label>Prénom(s)<input name="first_name" required></label>
@@ -305,18 +340,40 @@ function newStudentModal() {
   })
 }
 
+function newIntakeModal() {
+  const modal = showModal('Créer une nouvelle vague', `<form id="intake-form" class="form-stack">
+    <label>Nom de la vague<input name="name" required placeholder="Ex. Vague 2"></label>
+    <div class="grid-2"><label>Date de début<input name="start_date" type="date"></label><label>Date de fin prévue<input name="end_date" type="date"></label></div>
+    <p id="intake-error" class="error"></p>
+    <div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Créer la vague</button></div>
+  </form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#intake-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    if (!data.start_date) data.start_date = null
+    if (!data.end_date) data.end_date = null
+    const { data: intake, error } = await supabase.from('intakes').insert(data).select().single()
+    if (error) return modal.querySelector('#intake-error').textContent = error.message
+    state.intakeFilter = intake.id
+    modal.remove()
+    await refresh('Nouvelle vague créée.')
+  })
+}
+
 function manageStudentModal(studentId) {
   const student = state.students.find(x => x.id === studentId)
+  const intake = state.intakes.find(x => x.id === student.intake_id)
   const slots = state.enrollments.filter(x => x.student_id === studentId).sort((a, b) => a.slot - b.slot)
   const rows = slots.map(slot => {
     const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}" ${x.id === slot.formation_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
     const paid = state.payments.filter(x => x.enrollment_id === slot.id).reduce((s, x) => s + Number(x.amount), 0)
-    return `<tr><td class="code">${esc(slot.dossier_code)}</td><td class="formation-cell"><select class="slot-formation" data-id="${slot.id}">
+    return `<tr><td class="code">${esc(slot.dossier_code)}${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(slot.legacy_code)}</small>` : ''}</td><td class="formation-cell"><select class="slot-formation" data-id="${slot.id}">
       <option value="">Disponible</option>${formationOptions}</select></td><td><input class="slot-fee" data-id="${slot.id}" type="number" min="0" value="${slot.agreed_fee}"></td>
       <td>${money(paid)}</td><td>${money(Math.max(0, Number(slot.agreed_fee) - paid))}</td>
       <td><button class="link-btn save-slot" data-id="${slot.id}">Sauver</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">Paiement</button>` : ''}</td></tr>`
   }).join('')
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — ${esc(student.registration_code)}`, `
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — ${esc(student.registration_code)}`, `<p class="muted modal-context">Vague : <strong>${esc(intake?.name || 'Non classé')}</strong> · Jusqu’à quatre formations sont suivies séparément.</p>
     <div class="table-wrap"><table><thead><tr><th>Dossier</th><th>Formation</th><th>Tarif convenu</th><th>Payé</th><th>Reste</th><th>Action</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`)
   modal.querySelectorAll('.save-slot').forEach(button => button.addEventListener('click', async () => {
