@@ -12,6 +12,9 @@ const state = { user: null, staff: null, staffDirectory: [], students: [], enrol
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
+// The old IN- prefix is kept in the database for compatibility, but it has no
+// business meaning and is no longer shown to staff or on receipts.
+const displayCode = value => String(value ?? '').replace(/^IN-?/i, '') || '—'
 const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role)
 const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status)
 const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status)
@@ -73,6 +76,14 @@ const monthsFor = enrollment => Math.max(1, Number(formationFor(enrollment)?.dur
 // A debt is actionable only while both the student's record and this formation
 // are active. Payments remain part of the history whatever their later status.
 const activeEnrollment = enrollment => enrollment.status === 'inscrit' && studentFor(enrollment)?.status === 'actif'
+// A selected formation becomes financially accountable only after its dossier
+// is explicitly set to Active. Existing payments remain visible in history,
+// but an inactive dossier creates no fee or outstanding balance.
+function accountedFinancialStatus(enrollment) {
+  const summary = financialStatus(enrollment)
+  if (enrollment?.formation_id && activeEnrollment(enrollment)) return { ...summary, accounted: true }
+  return { ...summary, due: 0, remaining: 0, label: 'Non comptabilisé', className: '', accounted: false }
+}
 const enrolledEnrollment = enrollment => enrollment.status !== 'disponible'
 const feeFor = scholarship => scholarship ? 90000 : 180000
 const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholarship_status)) / monthsFor(enrollment))
@@ -129,7 +140,7 @@ function receiptHtml(payment) {
   const paymentObject = `${paymentMonthLabel(payment.billing_month)}${payment.installment ? ` - Tranche ${payment.installment}` : ''}`
   const pending = payment.payment_context === 'pending'
   const payerName = pending ? `${payment.pending_last_name || ''} ${payment.pending_first_name || ''}`.trim() : (student ? `${student.last_name} ${student.first_name}` : '—')
-  const dossier = pending ? 'En attente d’affectation' : (enrollment?.dossier_code || '—')
+  const dossier = pending ? 'En attente d’affectation' : displayCode(enrollment?.dossier_code)
   const status = pending ? (payment.pending_scholarship_status ? 'Boursier' : 'Standard') : (enrollment?.scholarship_status ? 'Boursier' : 'Standard')
   const cancelled = paymentIsCancelled(payment)
   const totals = cancelled ? `<section class="totals"><div class="total-row remaining"><span>Statut</span><b>VERSEMENT ANNULÉ — non comptabilisé</b></div><div class="total-row"><span>Motif</span><b>${esc(payment.cancellation_reason || 'Non précisé')}</b></div></section>` : pending ? `<section class="totals"><div class="total-row"><span>Situation</span><b>Paiement conservé en attente d’affectation</b></div></section>` : `<section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section>`
@@ -420,7 +431,7 @@ function studentRows(students) {
     const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
     const intake = state.intakes.find(x => x.id === student.intake_id)
     return `<tr>
-      <td class="code">${student.intake_student_number ? 'N° ' + esc(student.intake_student_number) : esc(student.registration_code)}<small class="legacy-code">${esc(student.registration_code)}</small></td>
+      <td class="code">${student.intake_student_number ? 'N° ' + esc(student.intake_student_number) : esc(displayCode(student.registration_code))}</td>
       <td><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><small class="legacy-code">Historique et reçus</small></td>
       <td>${studentAge(student) === null ? '—' : `${studentAge(student)} ans`}</td>
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
@@ -439,9 +450,9 @@ function paymentActionButtons(payment) {
 function paymentHistoryRow(payment) {
   const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
   const student = enrollment && studentFor(enrollment)
-  const remaining = enrollment ? financialStatus(enrollment).remaining : 0
+  const remaining = enrollment ? accountedFinancialStatus(enrollment).remaining : 0
   const cancelled = paymentIsCancelled(payment)
-  return `<tr><td>${dateTime(payment.paid_at)}</td><td class="code">${esc(enrollment?.dossier_code || '—')}</td>
+  return `<tr><td>${dateTime(payment.paid_at)}</td><td class="code">${esc(displayCode(enrollment?.dossier_code))}</td>
     <td>${student ? `<button class="link-btn student-payment-history" data-id="${student.id}">${esc(student.last_name)} ${esc(student.first_name)}</button>` : '—'}</td><td><strong>${money(payment.amount)}</strong></td>
     <td>${cancelled ? '—' : money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(paymentMethodLabel(payment.method))}</span></td><td>${cancelled ? `<span class="badge due">Annulé</span><small class="legacy-code">${esc(payment.cancellation_reason || 'Sans motif')}</small>` : esc(payment.reference || '—')}</td><td>${paymentActionButtons(payment)}</td></tr>`
 }
@@ -476,7 +487,7 @@ function paymentPanel() {
   const enrollmentRows = displayed.map(enrollment => {
     const student = studentFor(enrollment)
     const formation = formationFor(enrollment)
-    const summary = financialStatus(enrollment)
+    const summary = accountedFinancialStatus(enrollment)
     const progress = monthlyProgress(enrollment, selectedMonth)
     const paidTarget = selectedMonth && progress.trackable ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
     // "Reste dû" always stays the outstanding balance over the full 3 months.
@@ -485,7 +496,7 @@ function paymentPanel() {
     const monthStatus = selectedMonth && progress.trackable ? monthlyPaymentState(enrollment, selectedMonth) : null
     const label = monthStatus?.label || summary.label
     const className = monthStatus?.className || summary.className
-    return `<tr><td class="code">${esc(enrollment.dossier_code)}</td><td><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong></td>
+    return `<tr><td class="code">${esc(displayCode(enrollment.dossier_code))}</td><td><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong></td>
       <td>${esc(formation?.name || '—')}</td><td><span class="badge ${enrollment.scholarship_status ? 'ok' : ''}">${enrollment.scholarship_status ? 'Boursier' : 'Non boursier'}</span></td>
       <td>${paidTarget}</td><td>${money(remaining)}</td><td>${money(summary.due)}</td>
       <td><span class="badge ${className}">${label}</span></td><td><button class="link-btn pay-slot" data-id="${enrollment.id}">Ajouter paiement</button></td></tr>`
@@ -507,11 +518,11 @@ function paymentPanel() {
   const mobileCards = displayed.map(enrollment => {
     const student = studentFor(enrollment)
     const formation = formationFor(enrollment)
-    const summary = financialStatus(enrollment)
+    const summary = accountedFinancialStatus(enrollment)
     const progress = monthlyProgress(enrollment, selectedMonth)
     const status = selectedMonth ? monthlyPaymentState(enrollment, selectedMonth) : summary
     const target = selectedMonth ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
-    return `<article class="payment-mobile-card"><div><strong>${esc(enrollment.dossier_code)}</strong><span class="badge ${status.className}">${status.label}</span></div><p>${esc(student ? `${student.last_name} ${student.first_name}` : '—')} · ${esc(formation?.name || '—')}</p><dl><div><dt>Payé${selectedMonth ? ' / attendu' : ''}</dt><dd>${target}</dd></div><div><dt>Reste dû</dt><dd>${money(summary.remaining)}</dd></div><div><dt>Frais totaux</dt><dd>${money(summary.due)}</dd></div></dl></article>`
+    return `<article class="payment-mobile-card"><div><strong>${esc(displayCode(enrollment.dossier_code))}</strong><span class="badge ${status.className}">${status.label}</span></div><p>${esc(student ? `${student.last_name} ${student.first_name}` : '—')} · ${esc(formation?.name || '—')}</p><dl><div><dt>Payé${selectedMonth ? ' / attendu' : ''}</dt><dd>${target}</dd></div><div><dt>Reste dû</dt><dd>${money(summary.remaining)}</dd></div><div><dt>Frais totaux</dt><dd>${money(summary.due)}</dd></div></dl></article>`
   }).join('')
   return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
@@ -807,11 +818,11 @@ function manageStudentModal(studentId) {
   const slots = state.enrollments.filter(x => x.student_id === studentId).sort((a, b) => a.slot - b.slot)
   const rows = slots.map(slot => {
     const formationOptions = state.formations.filter(x => x.active).map(x => `<option value="${x.id}" ${x.id === slot.formation_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
-    const summary = financialStatus(slot)
+    const summary = accountedFinancialStatus(slot)
     const simpleNumber = student.intake_student_number || student.student_number || '—'
     const totalFee = summary.due
     const returnNote = slot.resumed_from_enrollment_id ? `<small class="legacy-code">Reprise à partir du mois ${esc(slot.resumes_from_month || 1)} · montant ajusté</small>` : ''
-    return `<article class="dossier-card"><div class="dossier-card-head"><div><strong>Dossier ${esc(slot.slot)} — N° ${esc(simpleNumber)}</strong>${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(slot.legacy_code)}</small>` : ''}${returnNote}</div><div><span class="badge ${summary.className}">${summary.label}</span><span class="badge">Payé ${money(summary.paid)} · Reste ${money(summary.remaining)}</span></div></div>
+    return `<article class="dossier-card"><div class="dossier-card-head"><div><strong>Dossier ${esc(slot.slot)} — N° ${esc(simpleNumber)}</strong>${slot.legacy_code ? `<small class="legacy-code">Ancien : ${esc(displayCode(slot.legacy_code))}</small>` : ''}${returnNote}</div><div><span class="badge ${summary.className}">${summary.label}</span><span class="badge">Payé ${money(summary.paid)} · Reste ${money(summary.remaining)}</span></div></div>
       <div class="dossier-grid">
         <label>Formation<select class="slot-formation" data-id="${slot.id}"><option value="">Disponible</option>${formationOptions}</select></label>
         <label>Statut<select class="slot-status" data-id="${slot.id}"><option value="disponible" ${slot.status === 'disponible' ? 'selected' : ''}>Disponible</option><option value="inscrit" ${slot.status === 'inscrit' ? 'selected' : ''}>Actif</option><option value="termine" ${slot.status === 'termine' ? 'selected' : ''}>Terminé</option><option value="abandonne" ${slot.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label>
@@ -833,10 +844,16 @@ function manageStudentModal(studentId) {
     modal.remove()
     await refresh('Statut de l’étudiant mis à jour.')
   })
-  modal.querySelectorAll('.slot-scholarship').forEach(select => select.addEventListener('change', () => {
-    const target = modal.querySelector(`.slot-fee-display[data-id="${select.dataset.id}"]`)
-    if (target) target.textContent = money(feeFor(select.value === 'true'))
-  }))
+  const updateSlotFeePreview = id => {
+    const target = modal.querySelector(`.slot-fee-display[data-id="${id}"]`)
+    const formationId = modal.querySelector(`.slot-formation[data-id="${id}"]`)?.value
+    const status = modal.querySelector(`.slot-status[data-id="${id}"]`)?.value
+    const scholarship = modal.querySelector(`.slot-scholarship[data-id="${id}"]`)?.value === 'true'
+    const studentIsActive = modal.querySelector('#student-status')?.value === 'actif'
+    if (target) target.textContent = money(formationId && status === 'inscrit' && studentIsActive ? feeFor(scholarship) : 0)
+  }
+  modal.querySelectorAll('.slot-formation, .slot-status, .slot-scholarship').forEach(control => control.addEventListener('change', () => updateSlotFeePreview(control.dataset.id)))
+  modal.querySelector('#student-status').addEventListener('change', () => slots.forEach(slot => updateSlotFeePreview(slot.id)))
   modal.querySelectorAll('.save-slot').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.id
     const currentSlot = slots.find(item => item.id === id)
@@ -845,8 +862,8 @@ function manageStudentModal(studentId) {
     const status = modal.querySelector(`.slot-status[data-id="${id}"]`).value
     const scholarship = modal.querySelector(`.slot-scholarship[data-id="${id}"]`).value === 'true'
     button.disabled = true
-    if (button.dataset.payAfter === 'true' && !formationId) {
-      toast('Choisissez d’abord une formation pour pouvoir enregistrer un paiement.', true)
+    if (button.dataset.payAfter === 'true' && (!formationId || status !== 'inscrit')) {
+      toast('Choisissez une formation et passez le dossier à Actif avant d’enregistrer un paiement.', true)
       button.disabled = false
       return
     }
@@ -855,8 +872,8 @@ function manageStudentModal(studentId) {
       monthly_fee: monthlyFeeFor({ ...currentSlot, formation_id: formationId, scholarship_status: scholarship }),
       learning_mode: modal.querySelector(`.slot-mode[data-id="${id}"]`).value,
       scholarship_status: scholarship,
-      status: formationId ? (status === 'disponible' ? 'inscrit' : status) : 'disponible',
-      enrolled_at: formationId ? (currentSlot.enrolled_at || today()) : null
+      status: formationId ? status : 'disponible',
+      enrolled_at: formationId && status === 'inscrit' ? (currentSlot.enrolled_at || today()) : currentSlot.enrolled_at
     }).eq('id', id).select('id,status').single()
     if (error || !updated) { toast(error?.message || 'Le dossier n’a pas été enregistré.', true); button.disabled = false; return }
     modal.remove()
@@ -988,7 +1005,7 @@ function studentPaymentHistoryModal(studentId) {
   const rows = payments.map(payment => {
     const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
     const cancelled = paymentIsCancelled(payment)
-    return `<tr><td>${dateTime(payment.paid_at)}</td><td>${esc(enrollment?.dossier_code || '—')}</td><td><strong>${money(payment.amount)}</strong></td><td>${esc(paymentMethodLabel(payment.method))}</td><td>${cancelled ? '<span class="badge due">Annulé</span>' : '<span class="badge ok">Comptabilisé</span>'}</td><td>${paymentActionButtons(payment)}</td></tr>`
+    return `<tr><td>${dateTime(payment.paid_at)}</td><td>${esc(displayCode(enrollment?.dossier_code))}</td><td><strong>${money(payment.amount)}</strong></td><td>${esc(paymentMethodLabel(payment.method))}</td><td>${cancelled ? '<span class="badge due">Annulé</span>' : '<span class="badge ok">Comptabilisé</span>'}</td><td>${paymentActionButtons(payment)}</td></tr>`
   }).join('')
   const timeline = audit.map(entry => `<li class="audit-entry"><div><span class="badge ${entry.action === 'cancelled' || entry.action === 'deleted' ? 'due' : entry.action === 'updated' ? 'warning' : 'ok'}">${esc(auditActionLabel(entry.action))}</span><strong>${dateTime(entry.occurred_at)}</strong></div><p>${esc(paymentAuditDescription(entry))}</p><small>Par : ${esc(staffName(entry.actor_id))}</small></li>`).join('')
   const modal = showModal(`Historique — ${esc(student.last_name)} ${esc(student.first_name)}`, `<div class="history-overview"><div><span>Total actuellement comptabilisé</span><strong>${money(activeTotal)}</strong></div><div><span>Versements</span><strong>${payments.length}</strong></div><div><span>Actions enregistrées</span><strong>${audit.length}</strong></div></div><section class="history-detail"><h3>Ses reçus et versements</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Dossier</th><th>Montant</th><th>Moyen</th><th>État</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun versement associé à cet élève.</div>'}</div></section><section class="history-detail"><h3>Journal des opérations</h3><p class="muted">Chaque ajout, modification, annulation ou suppression est conservé ici.</p><ol class="audit-list">${timeline || '<li class="empty">Aucune opération enregistrée.</li>'}</ol></section>`)
@@ -1046,6 +1063,7 @@ function deletePaymentModal(paymentId) {
 
 function paymentModal(enrollmentId) {
   const enrollment = state.enrollments.find(x => x.id === enrollmentId)
+  if (!enrollment?.formation_id || !activeEnrollment(enrollment)) return toast('Choisissez une formation et passez le dossier à Actif avant d’enregistrer un paiement.', true)
   const summary = financialStatus(enrollment)
   const monthOptions = Array.from({ length: monthsFor(enrollment) }, (_, i) => i + 1).map(month => `<option value="${month}">Mois ${month}</option>`).join('')
   const dossierNumber = `${enrollment.slot || '—'} — N° ${studentFor(enrollment)?.intake_student_number || '—'}`
