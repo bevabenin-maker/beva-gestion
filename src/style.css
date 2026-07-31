@@ -157,6 +157,13 @@ td { font-size: 14px; }
 .dossier-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .dossier-actions { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.row-actions { display: flex; gap: 6px; align-items: center; }
+.row-actions .danger { padding: 7px 10px; font-size: 12px; }
+.danger-zone { padding: 18px; border: 2px solid #d92d20; border-radius: 13px; color: #8f1d16; background: #fff2f0; }
+.danger-zone h3 { margin: 0 0 8px; color: #b42318; }
+.danger-zone p { line-height: 1.5; }
+.danger-zone label { color: #8f1d16; }
+.danger-zone input { margin-top: 7px; border-color: #ef8d86; }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; padding: 13px 18px; border-radius: 11px; color: white; background: #18724a; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
 .toast.bad { background: #a52a2a; }
 
@@ -181,6 +188,7 @@ td { font-size: 14px; }
   .cards, .grid-2 { grid-template-columns: 1fr; }
   .dossier-grid { grid-template-columns: 1fr; }
   .dossier-card-head { display: grid; }
+  .row-actions { min-width: 190px; }
   .payment-filter { width: 100%; min-width: 0; }
   .topbar { align-items: flex-start; }
   .topbar-actions { align-items: stretch; flex-direction: column; }
