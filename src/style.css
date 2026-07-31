@@ -149,6 +149,18 @@ td { font-size: 14px; }
 .student-actions .danger, .student-actions .secondary { white-space: nowrap; }
 .financial-panel + .history-panel { margin-top: 20px; }
 .pending-panel { margin-bottom: 20px; }
+.history-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; margin-bottom: 20px; }
+.history-overview > div { display: grid; gap: 5px; padding: 14px; border: 1px solid #dce7f4; border-radius: 12px; background: #f4f8fd; color: #60728a; font-size: 12px; font-weight: 700; }
+.history-overview strong { color: #092f5b; font-size: 19px; }
+.history-detail { padding: 16px; margin-top: 16px; border: 1px solid #e2eaf3; border-radius: 14px; background: #fff; }
+.history-detail h3 { margin: 0 0 5px; color: #123b69; font-size: 16px; }
+.history-detail .muted { margin: 0 0 12px; font-size: 13px; }
+.audit-list { display: grid; gap: 10px; padding: 0; margin: 14px 0 0; list-style: none; }
+.audit-entry { padding: 12px 13px; border-left: 4px solid #1b5faa; border-radius: 0 10px 10px 0; background: #f7faff; }
+.audit-entry > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-entry > div strong { color: #425d7d; font-size: 12px; }
+.audit-entry p { margin: 8px 0 3px; color: #1b304b; font-size: 13px; }
+.audit-entry small { color: #718096; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
 .payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .mobile-payment-list { display: none; }
@@ -229,6 +241,8 @@ td { font-size: 14px; }
   .modal-head, .modal-body { padding: 16px; }
   .modal-actions { flex-wrap: wrap; }
   .modal-actions button { flex: 1 1 140px; }
+  .history-overview { grid-template-columns: 1fr; }
+  .history-detail { padding: 13px; }
   .dossier-actions { align-items: stretch; flex-direction: column; }
   .dossier-actions button { width: 100%; }
 }
