@@ -147,6 +147,15 @@ td { font-size: 14px; }
 .student-settings label { flex: 1; }
 .financial-panel + .history-panel { margin-top: 20px; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
+.payment-filter { min-width: 250px; color: #3d4c61; }
+.payment-filter select { margin-top: 7px; }
+.dossier-list { display: grid; gap: 14px; }
+.dossier-card { padding: 16px; border: 1px solid #dfe7f1; border-radius: 14px; background: #fbfdff; }
+.dossier-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 13px; margin-bottom: 14px; border-bottom: 1px solid #e8eef5; }
+.dossier-card-head strong { color: #092f5b; }
+.dossier-card-head .badge { margin-left: 5px; }
+.dossier-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.dossier-actions { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; padding: 13px 18px; border-radius: 11px; color: white; background: #18724a; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
 .toast.bad { background: #a52a2a; }
@@ -170,6 +179,9 @@ td { font-size: 14px; }
   .nav button { padding: 10px 4px; font-size: 12px; }
   .main { padding: 20px 14px 45px; }
   .cards, .grid-2 { grid-template-columns: 1fr; }
+  .dossier-grid { grid-template-columns: 1fr; }
+  .dossier-card-head { display: grid; }
+  .payment-filter { width: 100%; min-width: 0; }
   .topbar { align-items: flex-start; }
   .topbar-actions { align-items: stretch; flex-direction: column; }
   .tools { flex-direction: column; }
