@@ -100,6 +100,8 @@ input:focus, select:focus, textarea:focus { border-color: #1b5faa; box-shadow: 0
 
 .main { min-width: 0; padding: 28px clamp(18px, 3vw, 46px) 55px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 28px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions select { min-width: 170px; }
 .topbar h1 { margin: 0; font-size: 28px; }
 .topbar p { margin: 5px 0 0; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
@@ -129,6 +131,8 @@ td { font-size: 14px; }
 .section { display: none; }
 .section.active { display: block; }
 .formation-cell { min-width: 210px; }
+.legacy-code { display: block; margin-top: 4px; color: #78879b; font-size: 11px; font-weight: 600; }
+.modal-context { margin: 0 0 18px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(3, 14, 28, .58); }
 .modal { width: min(680px, 100%); max-height: 92vh; overflow-y: auto; border-radius: 18px; background: white; }
@@ -161,5 +165,6 @@ td { font-size: 14px; }
   .main { padding: 20px 14px 45px; }
   .cards, .grid-2 { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; }
+  .topbar-actions { align-items: stretch; flex-direction: column; }
   .tools { flex-direction: column; }
 }
