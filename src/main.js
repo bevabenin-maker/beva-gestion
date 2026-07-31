@@ -39,7 +39,10 @@ function financialStatus(enrollment) {
 const formationFor = enrollment => state.formations.find(x => x.id === enrollment.formation_id)
 const studentFor = enrollment => state.students.find(x => x.id === enrollment.student_id)
 const monthsFor = enrollment => Math.max(1, Number(formationFor(enrollment)?.duration_months || 3))
-const activeEnrollment = enrollment => enrollment.status === 'inscrit'
+// A debt is actionable only while both the student's record and this formation
+// are active. Payments remain part of the history whatever their later status.
+const activeEnrollment = enrollment => enrollment.status === 'inscrit' && studentFor(enrollment)?.status === 'actif'
+const enrolledEnrollment = enrollment => enrollment.status !== 'disponible'
 const feeFor = scholarship => scholarship ? 90000 : 180000
 const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholarship_status)) / monthsFor(enrollment))
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
@@ -196,12 +199,20 @@ async function loadData() {
 }
 
 function dashboardStats() {
-  const assigned = scopedEnrollments().filter(x => x.status !== 'disponible')
+  const assigned = scopedEnrollments().filter(enrolledEnrollment)
   const active = assigned.filter(activeEnrollment)
-  const due = active.reduce((sum, item) => sum + financialStatus(item).due, 0)
   const paid = scopedPayments().reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const abandoned = assigned.filter(x => x.status === 'abandonne').length
-  return { assigned: assigned.length, active: active.length, abandoned, due, paid, balance: Math.max(0, due - paid) }
+  const students = scopedStudents()
+  const activeStudents = students.filter(x => x.status === 'actif').length
+  const abandonedStudentIds = new Set(students.filter(x => x.status === 'abandonne').map(x => x.id))
+  const abandonedStudents = abandonedStudentIds.size
+  // A dossier marked abandoned is also counted, unless its student is already
+  // counted as abandoned (to avoid displaying the same abandonment twice).
+  const abandonedDossiers = assigned.filter(x => x.status === 'abandonne' && !abandonedStudentIds.has(x.student_id)).length
+  // Never subtract payments belonging to abandoned/non-active dossiers here:
+  // each active dossier brings only its own remaining balance.
+  const balance = active.reduce((sum, item) => sum + financialStatus(item).remaining, 0)
+  return { assigned: assigned.length, active: active.length, activeStudents, abandonedStudents, abandonedDossiers, abandoned: abandonedStudents + abandonedDossiers, paid, balance }
 }
 
 function shellView() {
@@ -232,8 +243,9 @@ function shellView() {
           <div class="cards">
             <div class="card"><div class="label">Étudiants</div><div class="value">${scopedStudents().length}</div></div>
             <div class="card"><div class="label">Dossiers inscrits</div><div class="value">${stats.assigned}</div></div>
-            <div class="card"><div class="label">Dossiers actifs</div><div class="value">${stats.active}</div></div>
+            <div class="card"><div class="label">Étudiants actifs</div><div class="value">${stats.activeStudents}</div></div>
             <div class="card"><div class="label">Abandons</div><div class="value">${stats.abandoned}</div></div>
+            <div class="card"><div class="label">Dossiers actifs</div><div class="value">${stats.active}</div></div>
             <div class="card"><div class="label">Total encaissé</div><div class="value">${money(stats.paid)}</div></div>
             <div class="card"><div class="label">Reste à payer</div><div class="value">${money(stats.balance)}</div></div>
           </div>
@@ -275,9 +287,11 @@ function studentRows(students) {
 
 function paymentPanel() {
   const selectedMonth = state.paymentMonth === 'all' ? null : Number(state.paymentMonth)
-  const allEnrollments = scopedEnrollments().filter(x => x.status !== 'disponible')
+  const allEnrollments = scopedEnrollments().filter(enrolledEnrollment)
+  // The monthly follow-up deliberately excludes inactive and abandoned dossiers.
+  const followUpEnrollments = allEnrollments.filter(activeEnrollment)
   const displayed = selectedMonth
-    ? allEnrollments.filter(x => monthlyProgress(x, selectedMonth).remaining > 0)
+    ? followUpEnrollments.filter(x => monthlyProgress(x, selectedMonth).remaining > 0)
     : allEnrollments
   const enrollmentRows = displayed.map(enrollment => {
     const student = studentFor(enrollment)
@@ -285,9 +299,14 @@ function paymentPanel() {
     const summary = financialStatus(enrollment)
     const progress = monthlyProgress(enrollment, selectedMonth)
     const paidTarget = selectedMonth && progress.trackable ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
-    const remaining = selectedMonth && progress.trackable ? progress.remaining : summary.remaining
-    const label = selectedMonth && progress.trackable ? (remaining === 0 ? `Mois ${selectedMonth} soldé` : `Mois ${selectedMonth} à compléter`) : summary.label
-    const className = remaining === 0 ? 'ok' : (summary.paid > 0 ? 'warning' : 'due')
+    // "Reste dû" always stays the outstanding balance over the full 3 months.
+    // The monthly status, however, is evaluated against that month's cumulative target.
+    const remaining = summary.remaining
+    const monthShortfall = selectedMonth && progress.trackable ? progress.remaining : summary.remaining
+    const label = selectedMonth && progress.trackable
+      ? (monthShortfall === 0 ? 'Payé' : summary.paid > 0 ? 'Partiel' : 'Non payé')
+      : summary.label
+    const className = monthShortfall === 0 ? 'ok' : (summary.paid > 0 ? 'warning' : 'due')
     return `<tr><td class="code">${esc(enrollment.dossier_code)}</td><td><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong></td>
       <td>${esc(formation?.name || '—')}</td><td><span class="badge ${enrollment.scholarship_status ? 'ok' : ''}">${enrollment.scholarship_status ? 'Boursier' : 'Non boursier'}</span></td>
       <td>${paidTarget}</td><td>${money(remaining)}</td><td>${money(summary.due)}</td>
@@ -302,7 +321,7 @@ function paymentPanel() {
       <td>${money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(payment.method.replace('_', ' '))}</span></td><td>${esc(payment.reference || '—')}</td></tr>`
   }).join('')
   const monthOptions = Array.from({ length: maxPaymentMonths() }, (_, i) => i + 1).map(month => `<option value="${month}" ${String(month) === state.paymentMonth ? 'selected' : ''}>Mois ${month} — impayés à cette échéance</option>`).join('')
-  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Choisissez un mois pour voir les dossiers qui n'ont pas encore atteint le paiement cumulé attendu.</p></div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}</select></label></div><div class="table-wrap">
+  return `<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p></div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}</select></label></div><div class="table-wrap">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><h2>Historique des versements</h2></div><div class="table-wrap">
@@ -319,14 +338,16 @@ function formationPanel() {
 
 function intakePanel() {
   const rows = state.intakes.map(intake => {
-    const studentIds = new Set(state.students.filter(x => x.intake_id === intake.id).map(x => x.id))
+    const intakeStudents = state.students.filter(x => x.intake_id === intake.id)
+    const studentIds = new Set(intakeStudents.map(x => x.id))
     const items = state.enrollments.filter(x => studentIds.has(x.student_id) && x.status !== 'disponible')
     const itemIds = new Set(items.map(x => x.id))
     const paid = state.payments.filter(x => itemIds.has(x.enrollment_id)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
     const activeItems = items.filter(activeEnrollment)
-    const due = activeItems.reduce((sum, x) => sum + financialStatus(x).due, 0)
-    const abandoned = items.filter(x => x.status === 'abandonne').length
-    return `<tr><td><strong>${esc(intake.name)}</strong></td><td>${intake.start_date ? new Date(`${intake.start_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${intake.end_date ? new Date(`${intake.end_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${studentIds.size}</td><td>${items.length}</td><td>${activeItems.length}</td><td>${abandoned}</td><td>${money(paid)}</td><td>${money(Math.max(0, due - paid))}</td><td><span class="badge ${intake.active ? 'ok' : 'warning'}">${intake.active ? 'En cours' : 'Clôturée'}</span></td><td class="row-actions"><button class="link-btn edit-intake" data-id="${intake.id}">Modifier</button><button class="danger delete-intake" data-id="${intake.id}">Supprimer</button></td></tr>`
+    const activeStudents = intakeStudents.filter(x => x.status === 'actif').length
+    const abandonedStudents = intakeStudents.filter(x => x.status === 'abandonne').length
+    const balance = activeItems.reduce((sum, x) => sum + financialStatus(x).remaining, 0)
+    return `<tr><td><strong>${esc(intake.name)}</strong></td><td>${intake.start_date ? new Date(`${intake.start_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${intake.end_date ? new Date(`${intake.end_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${studentIds.size}</td><td>${items.length}</td><td>${activeStudents}</td><td>${abandonedStudents}</td><td>${money(paid)}</td><td>${money(balance)}</td><td><span class="badge ${intake.active ? 'ok' : 'warning'}">${intake.active ? 'En cours' : 'Clôturée'}</span></td><td class="row-actions"><button class="link-btn edit-intake" data-id="${intake.id}">Modifier</button><button class="danger delete-intake" data-id="${intake.id}">Supprimer</button></td></tr>`
   }).join('')
   return `<div class="panel"><div class="panel-head"><div><h2>Vagues de formation</h2><p class="muted">Le reste ne compte que les dossiers actifs ; une vague supprimée efface aussi ses étudiants, dossiers et paiements.</p></div><button id="add-intake" class="primary">+ Nouvelle vague</button></div><div class="table-wrap"><table><thead><tr><th>Vague</th><th>Début</th><th>Fin</th><th>Inscrits</th><th>Dossiers</th><th>Actifs</th><th>Abandons</th><th>Encaissé</th><th>Reste actif</th><th>Statut</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucune vague enregistrée.</div>'}</div></div>`
 }
