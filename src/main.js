@@ -8,7 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard', intakeFilter: 'all', paymentMonth: 'all' }
+const state = { user: null, staff: null, students: [], enrollments: [], formations: [], payments: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all' }
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
@@ -19,8 +19,8 @@ const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentie
 const planLabel = plan => ({ comptant: 'Paiement total', mensuel: 'Mensuel', deux_tranches_mois: '2 tranches / mois', non_precise: 'Non précisé' }[plan] || plan)
 const stageLabel = stage => ({ inscription: 'Inscription', premier_mois: '1er mois', mensualite: 'Mensualité', tranche_1: 'Tranche 1', tranche_2: 'Tranche 2', solde: 'Solde', versement: 'Versement' }[stage] || stage)
 const today = () => new Date().toISOString().slice(0, 10)
-const selectedIntake = () => state.intakeFilter === 'all' ? null : state.intakes.find(x => x.id === state.intakeFilter)
-const scopedStudents = () => state.intakeFilter === 'all' ? state.students : state.students.filter(x => x.intake_id === state.intakeFilter)
+const selectedIntake = () => state.intakes.find(x => x.id === state.intakeFilter) || null
+const scopedStudents = () => state.intakeFilter ? state.students.filter(x => x.intake_id === state.intakeFilter) : []
 const scopedEnrollments = () => {
   const ids = new Set(scopedStudents().map(x => x.id))
   return state.enrollments.filter(x => ids.has(x.student_id))
@@ -41,6 +41,12 @@ const formationFor = enrollment => state.formations.find(x => x.id === enrollmen
 const studentFor = enrollment => state.students.find(x => x.id === enrollment.student_id)
 const monthlyPlan = enrollment => ['mensuel', 'deux_tranches_mois'].includes(enrollment.payment_plan)
 const monthsFor = enrollment => Math.max(1, Number(formationFor(enrollment)?.duration_months || 3))
+const activeEnrollment = enrollment => enrollment.status === 'inscrit'
+function suggestedFees(formationId, scholarship, plan) {
+  const formation = state.formations.find(x => x.id === formationId)
+  const total = Number(scholarship ? formation?.scholarship_fee : formation?.standard_fee) || 0
+  return { total, monthly: monthlyPlan({ payment_plan: plan }) ? Math.ceil(total / Math.max(1, Number(formation?.duration_months || 3))) : 0 }
+}
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
 function monthlyProgress(enrollment, month) {
   const summary = financialStatus(enrollment)
@@ -191,13 +197,16 @@ async function loadData() {
   state.formations = formations.data
   state.payments = payments.data
   state.intakes = intakes.data
+  if (!selectedIntake()) state.intakeFilter = state.intakes.find(x => x.active)?.id || state.intakes[0]?.id || null
 }
 
 function dashboardStats() {
   const assigned = scopedEnrollments().filter(x => x.status !== 'disponible')
-  const due = assigned.reduce((sum, item) => sum + Number(item.agreed_fee || 0), 0)
+  const active = assigned.filter(activeEnrollment)
+  const due = active.reduce((sum, item) => sum + Number(item.agreed_fee || 0), 0)
   const paid = scopedPayments().reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  return { assigned: assigned.length, due, paid, balance: Math.max(0, due - paid) }
+  const abandoned = assigned.filter(x => x.status === 'abandonne').length
+  return { assigned: assigned.length, active: active.length, abandoned, due, paid, balance: Math.max(0, due - paid) }
 }
 
 function shellView() {
@@ -222,12 +231,14 @@ function shellView() {
       <main class="main">
         <header class="topbar">
           <div><h1 id="page-title">Tableau de bord</h1><p id="page-subtitle" class="muted">Vue générale de l’activité BEVA</p></div>
-          <div class="topbar-actions"><select id="intake-filter" aria-label="Filtrer par vague"><option value="all">Toutes les vagues</option>${state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button id="add-student-top" class="primary">+ Nouvel étudiant</button></div>
+          <div class="topbar-actions"><select id="intake-filter" aria-label="Choisir une vague">${state.intakes.map(x => `<option value="${x.id}" ${x.id === state.intakeFilter ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button id="add-student-top" class="primary">+ Nouvel étudiant</button></div>
         </header>
         <section id="dashboard" class="section">
           <div class="cards">
             <div class="card"><div class="label">Étudiants</div><div class="value">${scopedStudents().length}</div></div>
-            <div class="card"><div class="label">Formations suivies</div><div class="value">${stats.assigned}</div></div>
+            <div class="card"><div class="label">Dossiers inscrits</div><div class="value">${stats.assigned}</div></div>
+            <div class="card"><div class="label">Dossiers actifs</div><div class="value">${stats.active}</div></div>
+            <div class="card"><div class="label">Abandons</div><div class="value">${stats.abandoned}</div></div>
             <div class="card"><div class="label">Total encaissé</div><div class="value">${money(stats.paid)}</div></div>
             <div class="card"><div class="label">Reste à payer</div><div class="value">${money(stats.balance)}</div></div>
           </div>
@@ -306,10 +317,10 @@ function paymentPanel() {
 }
 
 function formationPanel() {
-  const rows = state.formations.map(item => `<tr><td><strong>${esc(item.name)}</strong></td><td>${money(item.standard_fee)}</td>
+  const rows = state.formations.map(item => `<tr><td><strong>${esc(item.name)}</strong></td><td>${money(item.standard_fee)}</td><td>${money(item.scholarship_fee)}</td>
     <td>${item.duration_months ? item.duration_months + ' mois' : '—'}</td><td><span class="badge ${item.active ? 'ok' : ''}">${item.active ? 'Active' : 'Inactive'}</span></td></tr>`).join('')
   return `<div class="panel"><div class="panel-head"><h2>Formations BEVA</h2></div><div class="table-wrap"><table>
-    <thead><tr><th>Formation</th><th>Tarif standard</th><th>Durée</th><th>Statut</th></tr></thead><tbody>${rows}</tbody></table></div></div>`
+    <thead><tr><th>Formation</th><th>Tarif standard</th><th>Tarif boursier</th><th>Durée</th><th>Statut</th></tr></thead><tbody>${rows}</tbody></table></div></div>`
 }
 
 function intakePanel() {
@@ -318,10 +329,12 @@ function intakePanel() {
     const items = state.enrollments.filter(x => studentIds.has(x.student_id) && x.status !== 'disponible')
     const itemIds = new Set(items.map(x => x.id))
     const paid = state.payments.filter(x => itemIds.has(x.enrollment_id)).reduce((sum, x) => sum + Number(x.amount || 0), 0)
-    const due = items.reduce((sum, x) => sum + Number(x.agreed_fee || 0), 0)
-    return `<tr><td><strong>${esc(intake.name)}</strong></td><td>${intake.start_date ? new Date(`${intake.start_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${intake.end_date ? new Date(`${intake.end_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${studentIds.size}</td><td>${items.length}</td><td>${money(paid)}</td><td>${money(Math.max(0, due - paid))}</td><td><span class="badge ${intake.active ? 'ok' : ''}">${intake.active ? 'Active' : 'Terminée'}</span></td></tr>`
+    const activeItems = items.filter(activeEnrollment)
+    const due = activeItems.reduce((sum, x) => sum + Number(x.agreed_fee || 0), 0)
+    const abandoned = items.filter(x => x.status === 'abandonne').length
+    return `<tr><td><strong>${esc(intake.name)}</strong></td><td>${intake.start_date ? new Date(`${intake.start_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${intake.end_date ? new Date(`${intake.end_date}T12:00:00`).toLocaleDateString('fr-FR') : '—'}</td><td>${studentIds.size}</td><td>${items.length}</td><td>${activeItems.length}</td><td>${abandoned}</td><td>${money(paid)}</td><td>${money(Math.max(0, due - paid))}</td><td><span class="badge ${intake.active ? 'ok' : 'warning'}">${intake.active ? 'En cours' : 'Clôturée'}</span></td><td class="row-actions"><button class="link-btn edit-intake" data-id="${intake.id}">Modifier</button><button class="danger delete-intake" data-id="${intake.id}">Supprimer</button></td></tr>`
   }).join('')
-  return `<div class="panel"><div class="panel-head"><h2>Vagues de formation</h2><button id="add-intake" class="primary">+ Nouvelle vague</button></div><div class="table-wrap"><table><thead><tr><th>Vague</th><th>Début</th><th>Fin</th><th>Étudiants</th><th>Formations</th><th>Encaissé</th><th>Reste</th><th>Statut</th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucune vague enregistrée.</div>'}</div></div>`
+  return `<div class="panel"><div class="panel-head"><div><h2>Vagues de formation</h2><p class="muted">Le reste ne compte que les dossiers actifs ; une vague supprimée efface aussi ses étudiants, dossiers et paiements.</p></div><button id="add-intake" class="primary">+ Nouvelle vague</button></div><div class="table-wrap"><table><thead><tr><th>Vague</th><th>Début</th><th>Fin</th><th>Inscrits</th><th>Dossiers</th><th>Actifs</th><th>Abandons</th><th>Encaissé</th><th>Reste actif</th><th>Statut</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucune vague enregistrée.</div>'}</div></div>`
 }
 
 function bindShell() {
@@ -329,6 +342,8 @@ function bindShell() {
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
+  document.querySelectorAll('.edit-intake').forEach(button => button.addEventListener('click', () => editIntakeModal(button.dataset.id)))
+  document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
   document.querySelectorAll('.pay-slot').forEach(button => button.addEventListener('click', () => paymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
@@ -421,6 +436,53 @@ function newIntakeModal() {
   })
 }
 
+function editIntakeModal(intakeId) {
+  const intake = state.intakes.find(x => x.id === intakeId)
+  if (!intake) return
+  const modal = showModal(`Modifier ${esc(intake.name)}`, `<form id="edit-intake-form" class="form-stack">
+    <label>Nom de la vague<input name="name" required value="${esc(intake.name)}"></label>
+    <div class="grid-2"><label>Date de début<input name="start_date" type="date" value="${intake.start_date || ''}"></label><label>Date de fin<input name="end_date" type="date" value="${intake.end_date || ''}"></label></div>
+    <label>Statut<select name="active"><option value="true" ${intake.active ? 'selected' : ''}>En cours</option><option value="false" ${!intake.active ? 'selected' : ''}>Clôturée</option></select></label>
+    <p id="edit-intake-error" class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button class="primary" type="submit">Enregistrer les modifications</button></div>
+  </form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#edit-intake-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    data.active = data.active === 'true'
+    if (!data.start_date) data.start_date = null
+    if (!data.end_date) data.end_date = null
+    const { error } = await supabase.from('intakes').update(data).eq('id', intakeId).select().single()
+    if (error) return modal.querySelector('#edit-intake-error').textContent = error.message
+    modal.remove()
+    await refresh('Vague mise à jour.')
+  })
+}
+
+function deleteIntakeModal(intakeId) {
+  const intake = state.intakes.find(x => x.id === intakeId)
+  if (!intake) return
+  const students = state.students.filter(x => x.intake_id === intakeId)
+  const studentIds = new Set(students.map(x => x.id))
+  const enrollments = state.enrollments.filter(x => studentIds.has(x.student_id) && x.status !== 'disponible')
+  const enrollmentIds = new Set(enrollments.map(x => x.id))
+  const payments = state.payments.filter(x => enrollmentIds.has(x.enrollment_id))
+  const modal = showModal('⚠ Suppression définitive', `<div class="danger-zone"><h3>Attention : cette action est irréversible.</h3><p>Vous allez supprimer la <strong>${esc(intake.name)}</strong>, avec <strong>${students.length} étudiant(s)</strong>, <strong>${enrollments.length} dossier(s)</strong> et <strong>${payments.length} paiement(s)</strong>.</p><label>Pour confirmer, saisissez exactement <strong>SUPPRIMER ${esc(intake.name)}</strong><input id="delete-confirmation" autocomplete="off"></label><p id="delete-intake-error" class="error"></p></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button id="confirm-delete-intake" class="danger" type="button" disabled>Supprimer définitivement</button></div>`)
+  const required = `SUPPRIMER ${intake.name}`
+  const confirm = modal.querySelector('#delete-confirmation')
+  const submit = modal.querySelector('#confirm-delete-intake')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  confirm.addEventListener('input', () => { submit.disabled = confirm.value.trim() !== required })
+  submit.addEventListener('click', async () => {
+    submit.disabled = true
+    const { error } = await supabase.from('intakes').delete().eq('id', intakeId)
+    if (error) { modal.querySelector('#delete-intake-error').textContent = error.message; submit.disabled = false; return }
+    if (state.intakeFilter === intakeId) state.intakeFilter = null
+    modal.remove()
+    await refresh('Vague et toutes ses données supprimées.')
+  })
+}
+
 function manageStudentModal(studentId) {
   const student = state.students.find(x => x.id === studentId)
   const intake = state.intakes.find(x => x.id === student.intake_id)
@@ -437,21 +499,36 @@ function manageStudentModal(studentId) {
         <label>Mode de suivi<select class="slot-mode" data-id="${slot.id}"><option value="presentiel" ${slot.learning_mode === 'presentiel' ? 'selected' : ''}>Présentiel</option><option value="en_ligne" ${slot.learning_mode === 'en_ligne' ? 'selected' : ''}>En ligne</option></select></label>
         <label>Bourse<select class="slot-scholarship" data-id="${slot.id}"><option value="false" ${!slot.scholarship_status ? 'selected' : ''}>Non boursier</option><option value="true" ${slot.scholarship_status ? 'selected' : ''}>Boursier</option></select></label>
         <label>Plan de paiement<select class="slot-plan" data-id="${slot.id}"><option value="non_precise" ${slot.payment_plan === 'non_precise' ? 'selected' : ''}>Non précisé</option><option value="comptant" ${slot.payment_plan === 'comptant' ? 'selected' : ''}>Paiement total</option><option value="mensuel" ${slot.payment_plan === 'mensuel' ? 'selected' : ''}>Mensuel</option><option value="deux_tranches_mois" ${slot.payment_plan === 'deux_tranches_mois' ? 'selected' : ''}>Deux tranches par mois</option></select></label>
-      </div><div class="dossier-actions"><button class="secondary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : ''}</div></article>`
+      </div><div class="dossier-actions"><button class="secondary suggest-slot-fee" data-id="${slot.id}">Appliquer tarif BEVA</button><button class="primary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : ''}</div></article>`
   }).join('')
   const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option><option value="archive" ${student.status === 'archive' ? 'selected' : ''}>Archivé</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
-  modal.querySelector('#save-student-status').addEventListener('click', async () => {
-    const { error } = await supabase.from('students').update({ status: modal.querySelector('#student-status').value }).eq('id', studentId)
-    if (error) return toast(error.message, true)
+  modal.querySelector('#save-student-status').addEventListener('click', async event => {
+    const button = event.currentTarget
+    button.disabled = true
+    const { data: updated, error } = await supabase.from('students').update({ status: modal.querySelector('#student-status').value }).eq('id', studentId).select('id,status').single()
+    if (error || !updated) { toast(error?.message || 'Le statut n’a pas été enregistré.', true); button.disabled = false; return }
+    student.status = updated.status
     modal.remove()
     await refresh('Statut de l’étudiant mis à jour.')
   })
+  modal.querySelectorAll('.suggest-slot-fee').forEach(button => button.addEventListener('click', () => {
+    const id = button.dataset.id
+    const formationId = modal.querySelector(`.slot-formation[data-id="${id}"]`).value
+    if (!formationId) return toast('Choisissez d’abord une formation.', true)
+    const scholarship = modal.querySelector(`.slot-scholarship[data-id="${id}"]`).value === 'true'
+    const plan = modal.querySelector(`.slot-plan[data-id="${id}"]`).value
+    const fees = suggestedFees(formationId, scholarship, plan)
+    modal.querySelector(`.slot-fee[data-id="${id}"]`).value = fees.total || ''
+    modal.querySelector(`.slot-monthly-fee[data-id="${id}"]`).value = fees.monthly || ''
+    toast(`Tarif ${scholarship ? 'boursier' : 'standard'} appliqué : ${money(fees.total)}.`)
+  }))
   modal.querySelectorAll('.save-slot').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.id
     const formationId = modal.querySelector(`.slot-formation[data-id="${id}"]`).value || null
     const fee = Number(modal.querySelector(`.slot-fee[data-id="${id}"]`).value || 0)
     const status = modal.querySelector(`.slot-status[data-id="${id}"]`).value
-    const { error } = await supabase.from('enrollments').update({
+    button.disabled = true
+    const { data: updated, error } = await supabase.from('enrollments').update({
       formation_id: formationId, agreed_fee: fee,
       monthly_fee: Number(modal.querySelector(`.slot-monthly-fee[data-id="${id}"]`).value || 0),
       learning_mode: modal.querySelector(`.slot-mode[data-id="${id}"]`).value,
@@ -459,8 +536,8 @@ function manageStudentModal(studentId) {
       payment_plan: modal.querySelector(`.slot-plan[data-id="${id}"]`).value,
       status: formationId ? (status === 'disponible' ? 'inscrit' : status) : 'disponible',
       enrolled_at: formationId ? (slot.enrolled_at || today()) : null
-    }).eq('id', id)
-    if (error) return toast(error.message, true)
+    }).eq('id', id).select('id,status').single()
+    if (error || !updated) { toast(error?.message || 'Le dossier n’a pas été enregistré.', true); button.disabled = false; return }
     modal.remove()
     await refresh('Dossier mis à jour.')
   }))
