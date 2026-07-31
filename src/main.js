@@ -13,7 +13,7 @@ const state = { user: null, staff: null, students: [], enrollments: [], formatio
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
 const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role)
-const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon', archive: 'Archivé' }[status] || status)
+const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status)
 const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status)
 const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentiel'
 const stageLabel = stage => ({ inscription: 'Inscription', premier_mois: '1er mois', mensualite: 'Mensualité', tranche_1: 'Tranche 1', tranche_2: 'Tranche 2', solde: 'Solde', versement: 'Versement' }[stage] || stage)
@@ -46,6 +46,7 @@ const enrolledEnrollment = enrollment => enrollment.status !== 'disponible'
 const feeFor = scholarship => scholarship ? 90000 : 180000
 const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholarship_status)) / monthsFor(enrollment))
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
+const canDeleteStudents = () => ['admin', 'direction'].includes(state.staff?.role)
 function monthlyProgress(enrollment, month) {
   const summary = financialStatus(enrollment)
   const monthlyFee = monthlyFeeFor(enrollment)
@@ -319,7 +320,7 @@ function studentRows(students) {
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
-      <td><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button></td>
+      <td class="row-actions"><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
     </tr>`
   }).join('')
 }
@@ -417,11 +418,13 @@ function bindShell() {
     switchSection('payments')
   })
   document.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
+  document.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   document.querySelector('#student-search')?.addEventListener('input', event => {
     const q = event.target.value.trim().toLowerCase()
     const result = state.students.filter(x => [x.registration_code, x.first_name, x.last_name, x.phone].some(v => String(v || '').toLowerCase().includes(q)))
     document.querySelector('#student-table').innerHTML = studentRows(result)
     document.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
+    document.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   })
 }
 
@@ -562,7 +565,8 @@ function manageStudentModal(studentId) {
         <div class="fee-summary"><span>Frais totaux</span><strong class="slot-fee-display" data-id="${slot.id}">${money(totalFee)}</strong><small>${slot.scholarship_status ? 'Bourse BEVA' : 'Tarif standard BEVA'}</small></div>
       </div><div class="dossier-actions"><button class="primary save-slot" data-id="${slot.id}">Enregistrer ce dossier</button>${slot.formation_id ? `<button class="link-btn pay-slot" data-id="${slot.id}">+ Paiement</button>` : '<button class="secondary save-slot" data-pay-after="true" data-id="' + slot.id + '">Enregistrer + paiement</button>'}</div></article>`
   }).join('')
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option><option value="archive" ${student.status === 'archive' ? 'selected' : ''}>Archivé</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
+  const deleteButton = canDeleteStudents() ? '<button id="delete-student-from-modal" class="danger" type="button">Supprimer cet élève</button>' : ''
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<div class="student-settings"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button>${deleteButton}</div><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Chaque bloc représente une formation, avec son propre tarif, sa bourse et son suivi financier.</p><div class="dossier-list">${rows}</div>`)
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
     const button = event.currentTarget
     button.disabled = true
@@ -606,6 +610,37 @@ function manageStudentModal(studentId) {
     modal.remove()
     paymentModal(button.dataset.id)
   }))
+  modal.querySelector('#delete-student-from-modal')?.addEventListener('click', () => {
+    modal.remove()
+    deleteStudentModal(studentId)
+  })
+}
+
+function deleteStudentModal(studentId) {
+  const student = state.students.find(x => x.id === studentId)
+  if (!student) return
+  const intake = state.intakes.find(x => x.id === student.intake_id)
+  const enrollments = state.enrollments.filter(x => x.student_id === studentId)
+  const enrollmentIds = new Set(enrollments.map(x => x.id))
+  const payments = state.payments.filter(x => enrollmentIds.has(x.enrollment_id))
+  const fullName = `${student.last_name} ${student.first_name}`.trim()
+  const required = `SUPPRIMER ${fullName}`
+  const modal = showModal('⚠ Suppression d’un élève', `<div class="danger-zone"><h3>Attention : cette action est irréversible.</h3><p>Vous allez supprimer <strong>${esc(fullName)}</strong> de <strong>${esc(intake?.name || 'cette vague')}</strong>, avec ses <strong>${enrollments.length} dossier(s)</strong> et ses <strong>${payments.length} paiement(s)</strong>.</p><p>Les autres élèves de cette vague seront automatiquement renumérotés : N° 2 devient N° 1, puis la suite sera corrigée.</p><label>Pour confirmer, saisissez exactement <strong>${esc(required)}</strong><input id="delete-student-confirmation" autocomplete="off"></label><p id="delete-student-error" class="error"></p></div><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button id="confirm-delete-student" class="danger" type="button" disabled>Supprimer définitivement</button></div>`)
+  const confirmation = modal.querySelector('#delete-student-confirmation')
+  const submit = modal.querySelector('#confirm-delete-student')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  confirmation.addEventListener('input', () => { submit.disabled = confirmation.value.trim() !== required })
+  submit.addEventListener('click', async () => {
+    submit.disabled = true
+    const { error } = await supabase.from('students').delete().eq('id', studentId)
+    if (error) {
+      modal.querySelector('#delete-student-error').textContent = error.message
+      submit.disabled = false
+      return
+    }
+    modal.remove()
+    await refresh('Élève supprimé. Les numéros de la vague ont été réorganisés.')
+  })
 }
 
 function paymentModal(enrollmentId) {
