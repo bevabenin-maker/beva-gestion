@@ -164,6 +164,17 @@ td { font-size: 14px; }
 .financial-panel .panel-head p { margin: 4px 0 0; font-size: 13px; }
 .payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .mobile-payment-list { display: none; }
+.mobile-student-list { display: none; }
+.age-statistics { margin-bottom: 20px; }
+.age-stat-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 20px 5px; }
+.age-stat-summary > div { display: grid; gap: 5px; padding: 13px 14px; border: 1px solid #dce7f4; border-radius: 12px; background: #f5f9fd; color: #61738a; font-size: 12px; font-weight: 700; }
+.age-stat-summary strong { color: #092f5b; font-size: 20px; }
+.age-stat-list { display: grid; gap: 12px; padding: 16px 20px 20px; }
+.age-stat-row { display: grid; gap: 7px; }
+.age-stat-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; color: #50637a; font-size: 13px; }
+.age-stat-row strong { color: #1b304b; }
+.age-bar { height: 8px; overflow: hidden; border-radius: 99px; background: #e8eff7; }
+.age-bar i { display: block; height: 100%; min-width: 0; border-radius: inherit; background: linear-gradient(90deg, #0c417d, #2873bd); }
 .payment-filter { min-width: 250px; color: #3d4c61; }
 .payment-filter select { margin-top: 7px; }
 .dossier-list { display: grid; gap: 14px; }
@@ -228,6 +239,22 @@ td { font-size: 14px; }
   .card .value { font-size: 24px; }
   .desktop-only { display: none !important; }
   .desktop-table { display: none; }
+  .student-panel .panel-head { gap: 10px; }
+  .student-panel .tools input { width: 100%; min-height: 46px; font-size: 16px; }
+  .mobile-student-list { display: grid; gap: 10px; padding: 12px; }
+  .student-mobile-card { display: grid; gap: 8px; padding: 14px; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
+  .student-mobile-card > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+  .student-mobile-card > .link-btn { width: fit-content; max-width: 100%; padding: 0; overflow-wrap: anywhere; color: #092f5b; font-size: 16px; text-align: left; }
+  .student-mobile-card dl { display: grid; grid-template-columns: .8fr .8fr 1.4fr; gap: 8px; margin: 0; }
+  .student-mobile-card dl div { min-width: 0; padding: 8px; border-radius: 9px; background: #f1f6fc; }
+  .student-mobile-card dt { color: #66758a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  .student-mobile-card dd { margin: 4px 0 0; color: #0b315d; font-size: 12px; font-weight: 900; overflow-wrap: anywhere; }
+  .age-statistics { margin-bottom: 14px; }
+  .age-statistics .panel-head { padding-bottom: 12px; }
+  .age-stat-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px 12px 3px; }
+  .age-stat-summary > div { min-width: 0; padding: 10px; }
+  .age-stat-summary strong { font-size: 16px; overflow-wrap: anywhere; }
+  .age-stat-list { padding: 12px; gap: 11px; }
   .mobile-payment-list { display: grid; gap: 10px; padding: 12px; }
   .payment-mobile-card { padding: 14px; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
   .payment-mobile-card > div:first-child { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #0c417d; }
@@ -236,6 +263,12 @@ td { font-size: 14px; }
   .payment-mobile-card dl div { min-width: 0; padding: 8px; border-radius: 9px; background: #f1f6fc; }
   .payment-mobile-card dt { color: #66758a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
   .payment-mobile-card dd { margin: 4px 0 0; color: #0b315d; font-size: 12px; font-weight: 900; overflow-wrap: anywhere; }
+  .financial-panel { overflow: visible; }
+  .financial-panel .panel-head { position: sticky; top: 0; z-index: 4; background: #fff; }
+  .financial-panel .payment-filter select { min-height: 46px; font-size: 16px; }
+  .history-panel .table-wrap, .pending-panel .table-wrap { display: none; }
+  .history-panel::after { content: 'Les reçus et les opérations détaillées sont disponibles sur tablette ou ordinateur.'; display: block; padding: 16px; color: #718096; font-size: 13px; line-height: 1.45; }
+  .pending-panel::after { content: 'La gestion des paiements en attente est disponible sur tablette ou ordinateur.'; display: block; padding: 16px; color: #718096; font-size: 13px; line-height: 1.45; }
   .modal-backdrop { align-items: end; padding: 0; }
   .modal { width: 100%; max-height: 90vh; border-radius: 20px 20px 0 0; }
   .modal-head, .modal-body { padding: 16px; }
