@@ -64,13 +64,18 @@ function financialStatus(enrollment) {
   return { paid, due, remaining, label: due > 0 && remaining === 0 ? 'Soldé' : paid > 0 ? 'Partiel' : 'Non payé', className: due > 0 && remaining === 0 ? 'ok' : paid > 0 ? 'warning' : 'due' }
 }
 
-const formationFor = enrollment => state.formations.find(x => x.id === enrollment.formation_id)
-const studentFor = enrollment => state.students.find(x => x.id === enrollment.student_id)
+// A dossier can legitimately be empty ("Disponible") or a payment can be
+// waiting for assignment. Keep the lookup safe in every view so an incomplete
+// record never prevents the rest of the application from opening.
+const formationFor = enrollment => enrollment?.formation_id ? state.formations.find(x => x.id === enrollment.formation_id) : null
+const formationNameFor = enrollment => formationFor(enrollment)?.name || 'Non précisée'
+const studentFor = enrollment => enrollment?.student_id ? state.students.find(x => x.id === enrollment.student_id) : null
 const monthsFor = enrollment => Math.max(1, Number(formationFor(enrollment)?.duration_months || 3))
 // A debt is actionable only while both the student's record and this formation
 // are active. Payments remain part of the history whatever their later status.
-const activeEnrollment = enrollment => enrollment.status === 'inscrit' && studentFor(enrollment)?.status === 'actif'
-const enrolledEnrollment = enrollment => enrollment.status !== 'disponible'
+const activeEnrollment = enrollment => enrollment?.status === 'inscrit' && studentFor(enrollment)?.status === 'actif'
+const expectedRemaining = enrollment => activeEnrollment(enrollment) ? financialStatus(enrollment).remaining : 0
+const enrolledEnrollment = enrollment => enrollment?.status !== 'disponible'
 const feeFor = scholarship => scholarship ? 90000 : 180000
 const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholarship_status)) / monthsFor(enrollment))
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
