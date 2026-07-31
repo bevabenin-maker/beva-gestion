@@ -19,7 +19,15 @@ const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentie
 const stageLabel = stage => ({ inscription: 'Inscription', premier_mois: '1er mois', mensualite: 'Mensualité', tranche_1: 'Tranche 1', tranche_2: 'Tranche 2', solde: 'Solde', versement: 'Versement' }[stage] || stage)
 const today = () => new Date().toISOString().slice(0, 10)
 const selectedIntake = () => state.intakes.find(x => x.id === state.intakeFilter) || null
-const scopedStudents = () => state.intakeFilter ? state.students.filter(x => x.intake_id === state.intakeFilter) : []
+// Keep every intake in the same visual order.  The database renumbers students
+// 1, 2, 3… after a deletion; this view deliberately shows the highest number
+// first, so a refresh, an edit, or a deletion never leaves the list shuffled.
+const scopedStudents = () => state.intakeFilter
+  ? state.students
+    .filter(x => x.intake_id === state.intakeFilter)
+    .slice()
+    .sort((a, b) => Number(b.intake_student_number || 0) - Number(a.intake_student_number || 0) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  : []
 const scopedEnrollments = () => {
   const ids = new Set(scopedStudents().map(x => x.id))
   return state.enrollments.filter(x => ids.has(x.student_id))
