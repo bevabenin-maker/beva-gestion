@@ -8,7 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, staffDirectory: [], students: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week' }
+const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week' }
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
@@ -94,6 +94,24 @@ const canPermanentlyDeletePayments = () => state.staff?.role === 'admin'
 const dateTime = value => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const auditActionLabel = action => ({ created: 'Versement enregistré', updated: 'Versement modifié', cancelled: 'Versement annulé', deleted: 'Versement supprimé' }[action] || 'Mise à jour')
 const staffName = id => state.staffDirectory.find(x => x.user_id === id)?.full_name || 'Système / ancien enregistrement'
+const studentNotesFor = studentId => state.studentNotes.filter(note => note.student_id === studentId)
+const canChangeStudentNote = note => ['admin', 'direction'].includes(state.staff?.role) || note.created_by === state.user?.id
+const noteDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('fr-FR') : null
+const followUpNote = studentId => studentNotesFor(studentId)
+  .filter(note => note.follow_up_on)
+  .slice()
+  .sort((a, b) => String(a.follow_up_on).localeCompare(String(b.follow_up_on)))[0] || null
+
+async function insertStudentNote(studentId, content, followUpOn = null) {
+  const cleanContent = String(content || '').trim()
+  if (!cleanContent) return { data: null, error: null }
+  return supabase.from('student_notes').insert({
+    student_id: studentId,
+    content: cleanContent,
+    follow_up_on: followUpOn || null,
+    created_by: state.user.id
+  }).select().single()
+}
 function monthlyProgress(enrollment, month) {
   const summary = financialStatus(enrollment)
   const monthlyFee = monthlyFeeFor(enrollment)
@@ -283,21 +301,23 @@ function choosePasswordView() {
 }
 
 async function loadData() {
-  const [staff, staffDirectory, students, enrollments, formations, payments, paymentAudit, intakes] = await Promise.all([
+  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes] = await Promise.all([
     supabase.from('staff_members').select('*').eq('user_id', state.user.id).single(),
     supabase.from('staff_members').select('user_id,full_name'),
     supabase.from('students').select('*').order('student_number', { ascending: false }),
+    supabase.from('student_notes').select('*').order('created_at', { ascending: false }),
     supabase.from('enrollments').select('*').order('dossier_code'),
     supabase.from('formations').select('*').order('name'),
     supabase.from('payments').select('*').order('paid_at', { ascending: false }),
     supabase.from('payment_audit_log').select('*').order('occurred_at', { ascending: false }),
     supabase.from('intakes').select('*').order('start_date', { ascending: false })
   ])
-  const firstError = [staff, staffDirectory, students, enrollments, formations, payments, paymentAudit, intakes].find(x => x.error)?.error
+  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes].find(x => x.error)?.error
   if (firstError) throw firstError
   state.staff = staff.data
   state.staffDirectory = staffDirectory.data
   state.students = students.data
+  state.studentNotes = studentNotes.data
   state.enrollments = enrollments.data
   state.formations = formations.data
   state.payments = payments.data
@@ -421,8 +441,10 @@ function studentMobileCards(students) {
   return students.map(student => {
     const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
     const age = studentAge(student)
+    const notes = studentNotesFor(student.id)
+    const followUp = followUpNote(student.id)
     const statusClass = student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'
-    return `<article class="student-mobile-card"><div><span class="code">N° ${esc(student.intake_student_number || '—')}</span><span class="badge ${statusClass}">${esc(studentStatusLabel(student.status))}</span></div><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><dl><div><dt>Âge</dt><dd>${age === null ? 'Non renseigné' : `${age} ans`}</dd></div><div><dt>Formations</dt><dd>${items.length} / 4</dd></div><div><dt>Téléphone</dt><dd>${esc(student.phone || '—')}</dd></div></dl></article>`
+    return `<article class="student-mobile-card"><div><span class="code">N° ${esc(student.intake_student_number || '—')}</span><span class="badge ${statusClass}">${esc(studentStatusLabel(student.status))}</span></div><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><dl><div><dt>Âge</dt><dd>${age === null ? 'Non renseigné' : `${age} ans`}</dd></div><div><dt>Formations</dt><dd>${items.length} / 4</dd></div><div><dt>Téléphone</dt><dd>${esc(student.phone || '—')}</dd></div></dl><div class="student-note-summary"><span>${notes.length} note${notes.length > 1 ? 's' : ''}${followUp ? ` · Relance le ${noteDate(followUp.follow_up_on)}` : ''}</span><button class="secondary student-notes" data-id="${student.id}">Notes de suivi</button></div></article>`
   }).join('')
 }
 
@@ -430,14 +452,16 @@ function studentRows(students) {
   return students.map(student => {
     const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
     const intake = state.intakes.find(x => x.id === student.intake_id)
+    const noteCount = studentNotesFor(student.id).length
+    const followUp = followUpNote(student.id)
     return `<tr>
       <td class="code">${student.intake_student_number ? 'N° ' + esc(student.intake_student_number) : esc(displayCode(student.registration_code))}</td>
-      <td><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><small class="legacy-code">Historique et reçus</small></td>
+      <td><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><small class="legacy-code">${noteCount} note${noteCount > 1 ? 's' : ''}${followUp ? ` · Relance le ${noteDate(followUp.follow_up_on)}` : ''}</small></td>
       <td>${studentAge(student) === null ? '—' : `${studentAge(student)} ans`}</td>
       <td><span class="badge">${esc(intake?.name || 'Non classé')}</span></td>
       <td>${esc(student.phone || '—')}</td>
       <td><span class="badge ${student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'}">${esc(studentStatusLabel(student.status))}</span> <span class="badge ${items.length ? 'ok' : ''}">${items.length} / 4</span></td>
-      <td class="row-actions desktop-only"><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
+      <td class="row-actions desktop-only"><button class="secondary student-notes" data-id="${student.id}">Notes (${noteCount})</button><button class="link-btn manage-student" data-id="${student.id}">Gérer les dossiers</button>${canDeleteStudents() ? `<button class="danger delete-student" data-id="${student.id}">Supprimer</button>` : ''}</td>
     </tr>`
   }).join('')
 }
@@ -577,6 +601,7 @@ function bindShell() {
   document.querySelectorAll('.cancel-payment').forEach(button => button.addEventListener('click', () => cancelPaymentModal(button.dataset.id)))
   document.querySelectorAll('.delete-payment').forEach(button => button.addEventListener('click', () => deletePaymentModal(button.dataset.id)))
   document.querySelectorAll('.student-payment-history').forEach(button => button.addEventListener('click', () => studentPaymentHistoryModal(button.dataset.id)))
+  document.querySelectorAll('.student-notes').forEach(button => button.addEventListener('click', () => studentNotesModal(button.dataset.id)))
   document.querySelectorAll('.assign-pending').forEach(button => button.addEventListener('click', () => assignPendingPaymentModal(button.dataset.id)))
   document.querySelector('#intake-filter').addEventListener('change', event => {
     state.intakeFilter = event.target.value
@@ -602,6 +627,7 @@ function bindShell() {
     panel.querySelector('#student-table').innerHTML = studentRows(result)
     panel.querySelector('.mobile-student-list').innerHTML = studentMobileCards(result)
     panel.querySelectorAll('.student-payment-history').forEach(button => button.addEventListener('click', () => studentPaymentHistoryModal(button.dataset.id)))
+    panel.querySelectorAll('.student-notes').forEach(button => button.addEventListener('click', () => studentNotesModal(button.dataset.id)))
     panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
     panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   })
@@ -652,10 +678,13 @@ function newStudentModal() {
     Object.keys(data).forEach(key => { if (data[key] === '') data[key] = null })
     data.created_by = state.user.id
     button.disabled = true
-    const { error } = await supabase.from('students').insert(data)
-    if (error) return toast(error.message, true), button.disabled = false
+    const initialNote = String(data.notes || '').trim()
+    delete data.notes
+    const { data: student, error } = await supabase.from('students').insert(data).select('id').single()
+    if (error || !student) return toast(error?.message || 'L’étudiant n’a pas été enregistré.', true), button.disabled = false
+    const { error: noteError } = await insertStudentNote(student.id, initialNote)
     modal.remove()
-    await refresh('Étudiant enregistré avec ses quatre dossiers.')
+    await refresh(noteError ? `Étudiant enregistré, mais sa note n’a pas pu être ajoutée : ${noteError.message}` : 'Étudiant enregistré avec ses quatre dossiers.')
   })
 }
 
@@ -694,8 +723,10 @@ function assignPendingPaymentModal(paymentId) {
     event.preventDefault()
     const data = Object.fromEntries(new FormData(event.currentTarget))
     const scholarship = data.scholarship_status === 'true'
-    const { data: student, error: studentError } = await supabase.from('students').insert({ last_name: payment.pending_last_name, first_name: payment.pending_first_name, phone: payment.pending_phone || null, intake_id: data.intake_id, status: 'actif', notes: payment.notes || null, created_by: state.user.id }).select().single()
+    const { data: student, error: studentError } = await supabase.from('students').insert({ last_name: payment.pending_last_name, first_name: payment.pending_first_name, phone: payment.pending_phone || null, intake_id: data.intake_id, status: 'actif', created_by: state.user.id }).select().single()
     if (studentError || !student) return toast(studentError?.message || 'Impossible de créer l’élève.', true)
+    const { error: noteError } = await insertStudentNote(student.id, payment.notes)
+    if (noteError) return toast(`Élève créé, mais note non ajoutée : ${noteError.message}`, true)
     const { data: slots, error: slotsError } = await supabase.from('enrollments').select('*').eq('student_id', student.id).order('slot')
     const slot = slots?.find(x => x.status === 'disponible')
     if (slotsError || !slot) return toast(slotsError?.message || 'Dossier de formation introuvable.', true)
@@ -731,8 +762,11 @@ function returnStudentModal() {
     const resumesFromMonth = Number(data.resumes_from_month)
     const fullFee = feeFor(Boolean(source.scholarship_status))
     const remainingFee = Math.max(0, fullFee - (resumesFromMonth - 1) * Math.ceil(fullFee / monthsFor(source)))
-    const { data: student, error: studentError } = await supabase.from('students').insert({ first_name: oldStudent.first_name, last_name: oldStudent.last_name, sex: oldStudent.sex, birth_date: oldStudent.birth_date, phone: oldStudent.phone, email: oldStudent.email, address: oldStudent.address, intake_id: data.intake_id, status: 'actif', returning_from_student_id: oldStudent.id, notes: `Reprise de ${formationFor(source)?.name || 'formation'} à partir du mois ${resumesFromMonth}.`, created_by: state.user.id }).select().single()
+    const returnNote = `Reprise de ${formationFor(source)?.name || 'formation'} à partir du mois ${resumesFromMonth}.`
+    const { data: student, error: studentError } = await supabase.from('students').insert({ first_name: oldStudent.first_name, last_name: oldStudent.last_name, sex: oldStudent.sex, birth_date: oldStudent.birth_date, phone: oldStudent.phone, email: oldStudent.email, address: oldStudent.address, intake_id: data.intake_id, status: 'actif', returning_from_student_id: oldStudent.id, created_by: state.user.id }).select().single()
     if (studentError || !student) return toast(studentError?.message || 'Impossible de créer la reprise.', true)
+    const { error: noteError } = await insertStudentNote(student.id, returnNote)
+    if (noteError) return toast(`Reprise créée, mais note non ajoutée : ${noteError.message}`, true)
     const { data: slots, error: slotsError } = await supabase.from('enrollments').select('*').eq('student_id', student.id).order('slot')
     const slot = slots?.find(x => x.status === 'disponible')
     if (slotsError || !slot) return toast(slotsError?.message || 'Dossier de reprise introuvable.', true)
@@ -834,7 +868,12 @@ function manageStudentModal(studentId) {
   const studentPayments = state.payments.filter(payment => slots.some(slot => slot.id === payment.enrollment_id))
   const deleteButton = canDeleteStudents() ? '<button id="delete-student-from-modal" class="danger" type="button">Supprimer cet élève</button>' : ''
   const pendingButton = studentPayments.length && canDeleteStudents() ? '<button id="move-student-to-pending" class="secondary" type="button">Mettre ses paiements en attente</button>' : ''
-  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<section class="student-settings"><div class="student-status-control"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div>${pendingButton || deleteButton ? `<div class="student-actions">${pendingButton}${deleteButton}</div>` : ''}</section><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Modifiez seulement les informations nécessaires dans chaque dossier.</p><div class="dossier-list">${rows}</div>`)
+  const noteCount = studentNotesFor(studentId).length
+  const modal = showModal(`${esc(student.last_name)} ${esc(student.first_name)} — N° ${esc(student.intake_student_number || '—')}`, `<section class="student-settings"><div class="student-status-control"><label>Statut général de l’étudiant<select id="student-status"><option value="actif" ${student.status === 'actif' ? 'selected' : ''}>Actif</option><option value="suspendu" ${student.status === 'suspendu' ? 'selected' : ''}>Suspendu</option><option value="abandonne" ${student.status === 'abandonne' ? 'selected' : ''}>Abandon</option></select></label><button id="save-student-status" class="secondary">Enregistrer le statut</button></div><div class="student-actions"><button id="open-student-notes" class="secondary" type="button">Notes de suivi (${noteCount})</button>${pendingButton}${deleteButton}</div></section><p class="muted modal-context">${esc(intake?.name || 'Non classé')} · Modifiez seulement les informations nécessaires dans chaque dossier.</p><div class="dossier-list">${rows}</div>`)
+  modal.querySelector('#open-student-notes').addEventListener('click', () => {
+    modal.remove()
+    studentNotesModal(studentId)
+  })
   modal.querySelector('#save-student-status').addEventListener('click', async event => {
     const button = event.currentTarget
     button.disabled = true
@@ -891,6 +930,89 @@ function manageStudentModal(studentId) {
   modal.querySelector('#move-student-to-pending')?.addEventListener('click', () => {
     modal.remove()
     moveStudentToPendingModal(studentId)
+  })
+}
+
+function studentNoteMarkup(note) {
+  const followUp = note.follow_up_on
+  const overdue = followUp && followUp < today()
+  const dueToday = followUp === today()
+  const followUpBadge = followUp
+    ? `<span class="badge ${overdue ? 'due' : dueToday ? 'warning' : 'ok'}">${overdue ? 'Relance en retard' : dueToday ? 'Relance aujourd’hui' : `Relance le ${noteDate(followUp)}`}</span>`
+    : '<span class="badge">Sans date de relance</span>'
+  const actions = canChangeStudentNote(note)
+    ? `<div class="note-actions"><button class="link-btn edit-student-note" data-id="${note.id}">Modifier</button><button class="danger delete-student-note" data-id="${note.id}">Supprimer</button></div>`
+    : ''
+  return `<article class="student-note"><div class="student-note-head">${followUpBadge}${actions}</div><p>${esc(note.content)}</p><small>Ajoutée par ${esc(staffName(note.created_by))}, le ${dateTime(note.created_at)}${note.updated_at !== note.created_at ? ` · Modifiée le ${dateTime(note.updated_at)}` : ''}</small></article>`
+}
+
+function studentNotesModal(studentId) {
+  const student = state.students.find(item => item.id === studentId)
+  if (!student) return toast('Élève introuvable.', true)
+  const notes = studentNotesFor(studentId)
+  const modal = showModal(`Notes de suivi — ${esc(student.last_name)} ${esc(student.first_name)}`, `<form id="student-note-form" class="note-composer"><label>Nouvelle note<textarea name="content" rows="4" maxlength="2000" required placeholder="Ex. L’élève prévoit de payer le 10 septembre."></textarea></label><label>Date de relance facultative<input name="follow_up_on" type="date"></label><p id="student-note-error" class="error"></p><div class="modal-actions"><button class="primary" type="submit">Ajouter la note</button></div></form><section class="note-history"><div class="note-history-title"><h3>Historique</h3><span class="badge">${notes.length} note${notes.length > 1 ? 's' : ''}</span></div><div class="student-note-list">${notes.map(studentNoteMarkup).join('') || '<div class="empty">Aucune note de suivi pour cet élève.</div>'}</div></section>`)
+  modal.querySelector('#student-note-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const button = event.currentTarget.querySelector('[type=submit]')
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    button.disabled = true
+    const { error } = await insertStudentNote(studentId, data.content, data.follow_up_on)
+    if (error) {
+      modal.querySelector('#student-note-error').textContent = error.message
+      button.disabled = false
+      return
+    }
+    modal.remove()
+    await loadData()
+    shellView()
+    studentNotesModal(studentId)
+    toast('Note de suivi ajoutée.')
+  })
+  modal.querySelectorAll('.edit-student-note').forEach(button => button.addEventListener('click', () => {
+    const note = state.studentNotes.find(item => item.id === button.dataset.id)
+    modal.remove()
+    editStudentNoteModal(studentId, note)
+  }))
+  modal.querySelectorAll('.delete-student-note').forEach(button => button.addEventListener('click', async () => {
+    const note = state.studentNotes.find(item => item.id === button.dataset.id)
+    if (!note || !canChangeStudentNote(note) || !window.confirm('Supprimer définitivement cette note de suivi ?')) return
+    button.disabled = true
+    const { error } = await supabase.from('student_notes').delete().eq('id', note.id).select('id').single()
+    if (error) return toast(error.message, true), button.disabled = false
+    modal.remove()
+    await loadData()
+    shellView()
+    studentNotesModal(studentId)
+    toast('Note supprimée.')
+  }))
+}
+
+function editStudentNoteModal(studentId, note) {
+  const student = state.students.find(item => item.id === studentId)
+  if (!student || !note || !canChangeStudentNote(note)) return toast('Cette note ne peut pas être modifiée.', true)
+  const modal = showModal(`Modifier la note — ${esc(student.last_name)} ${esc(student.first_name)}`, `<form id="edit-student-note-form" class="note-composer"><label>Note<textarea name="content" rows="5" maxlength="2000" required>${esc(note.content)}</textarea></label><label>Date de relance facultative<input name="follow_up_on" type="date" value="${esc(note.follow_up_on || '')}"></label><p id="student-note-error" class="error"></p><div class="modal-actions"><button class="secondary cancel" type="button">Annuler</button><button class="primary" type="submit">Enregistrer</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => {
+    modal.remove()
+    studentNotesModal(studentId)
+  })
+  modal.querySelector('#edit-student-note-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const data = Object.fromEntries(new FormData(event.currentTarget))
+    const content = String(data.content || '').trim()
+    if (!content) return modal.querySelector('#student-note-error').textContent = 'La note ne peut pas être vide.'
+    const button = event.currentTarget.querySelector('[type=submit]')
+    button.disabled = true
+    const { error } = await supabase.from('student_notes').update({ content, follow_up_on: data.follow_up_on || null, updated_by: state.user.id }).eq('id', note.id).select('id').single()
+    if (error) {
+      modal.querySelector('#student-note-error').textContent = error.message
+      button.disabled = false
+      return
+    }
+    modal.remove()
+    await loadData()
+    shellView()
+    studentNotesModal(studentId)
+    toast('Note mise à jour.')
   })
 }
 
