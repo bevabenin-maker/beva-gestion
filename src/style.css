@@ -119,6 +119,11 @@ input:focus, select:focus, textarea:focus { border-color: #1b5faa; box-shadow: 0
 .panel-head h2 { margin: 0; font-size: 18px; }
 .tools { display: flex; gap: 10px; }
 .tools input { width: min(300px, 45vw); }
+.export-tools { align-items: center; }
+.export-excel { min-height: 42px; white-space: nowrap; }
+.export-excel:disabled { cursor: wait; opacity: .7; }
+.payment-export-tools { display: grid; min-width: 250px; gap: 10px; }
+.payment-export-tools .export-excel { width: 100%; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 13px 16px; border-bottom: 1px solid #edf1f5; text-align: left; white-space: nowrap; }
@@ -254,6 +259,8 @@ td { font-size: 14px; }
   .topbar-actions select { min-width: 0; flex: 1; }
   .topbar-actions .primary { white-space: nowrap; padding-inline: 12px; }
   .tools { flex-direction: column; }
+  .export-tools, .payment-export-tools { width: 100%; min-width: 0; align-items: stretch; }
+  .export-tools .export-excel, .payment-export-tools .export-excel { width: 100%; min-height: 46px; }
   .panel-head { align-items: stretch; flex-direction: column; padding: 15px; }
   .panel-head h2 { font-size: 17px; line-height: 1.28; }
   .panel-head > .primary { width: 100%; }
