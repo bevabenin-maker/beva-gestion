@@ -9,7 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.57.4"
+    "@supabase/supabase-js": "2.57.4",
+    "write-excel-file": "4.1.1"
   },
   "devDependencies": {
     "vite": "7.1.7"
