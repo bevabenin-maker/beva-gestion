@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { downloadPaymentsExcel, downloadStudentsExcel } from './excelExport.js'
 import './style.css'
 
 const SUPABASE_URL = 'https://bxhgptcsuhbfuqamcdxs.supabase.co'
@@ -402,7 +403,7 @@ function shellView() {
 function studentPanel(title, students, searchable = false) {
   const ageStats = studentAgeStats(students)
   return `${searchable ? ageStatisticsPanel(ageStats) : ''}<div class="panel student-panel">
-    <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"></div>' : ''}</div>
+    <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools export-tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"><button id="export-students-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div>' : ''}</div>
     <div class="mobile-student-list">${studentMobileCards(students)}</div>
     <div class="table-wrap desktop-table"><table><thead><tr><th>N°</th><th>Nom et prénom</th><th>Âge</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
     <tbody id="${searchable ? 'student-table' : 'recent-table'}">${studentRows(students)}</tbody></table>
@@ -548,7 +549,7 @@ function paymentPanel() {
     const target = selectedMonth ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
     return `<article class="payment-mobile-card"><div><strong>${esc(displayCode(enrollment.dossier_code))}</strong><span class="badge ${status.className}">${status.label}</span></div><p>${esc(student ? `${student.last_name} ${student.first_name}` : '—')} · ${esc(formation?.name || '—')}</p><dl><div><dt>Payé${selectedMonth ? ' / attendu' : ''}</dt><dd>${target}</dd></div><div><dt>Reste dû</dt><dd>${money(summary.remaining)}</dd></div><div><dt>Frais totaux</dt><dd>${money(summary.due)}</dd></div></dl></article>`
   }).join('')
-  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
+  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><div class="payment-export-tools"><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label><button id="export-payments-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><div><h2>${state.paymentHistoryRange === 'week' ? 'Versements récents — 7 derniers jours' : 'Historique complet des versements'}</h2><p class="muted">Cliquez sur le nom d’un élève pour ouvrir son historique, ses reçus et toutes les actions liées à ses paiements.</p></div><label class="payment-filter">Période<select id="payment-history-range"><option value="week" ${state.paymentHistoryRange === 'week' ? 'selected' : ''}>7 derniers jours</option><option value="all" ${state.paymentHistoryRange === 'all' ? 'selected' : ''}>Tout l’historique</option></select></label></div><div class="table-wrap">
@@ -592,6 +593,8 @@ function bindShell() {
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
   document.querySelector('#add-pending-payment')?.addEventListener('click', pendingPaymentModal)
+  document.querySelector('#export-students-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadStudentsExcel(state, state.intakeFilter), 'Données des élèves exportées.'))
+  document.querySelector('#export-payments-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadPaymentsExcel(state, state.intakeFilter), 'Données des paiements exportées.'))
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
   document.querySelectorAll('.edit-intake').forEach(button => button.addEventListener('click', () => editIntakeModal(button.dataset.id)))
   document.querySelectorAll('.delete-intake').forEach(button => button.addEventListener('click', () => deleteIntakeModal(button.dataset.id)))
@@ -631,6 +634,23 @@ function bindShell() {
     panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
     panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
   })
+}
+
+async function runExcelExport(button, exporter, successMessage) {
+  if (!state.intakeFilter) return toast('Choisissez une vague avant de lancer l’export.', true)
+  const originalText = button.textContent
+  button.disabled = true
+  button.textContent = 'Préparation…'
+  try {
+    await exporter()
+    toast(successMessage)
+  } catch (error) {
+    console.error('Erreur d’export Excel', error)
+    toast(`L’export Excel a échoué : ${error?.message || 'erreur inconnue'}`, true)
+  } finally {
+    button.disabled = false
+    button.textContent = originalText
+  }
 }
 
 function switchSection(section) {
