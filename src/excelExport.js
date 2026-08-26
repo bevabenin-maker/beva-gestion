@@ -8,6 +8,7 @@ const TEXT = '#1B304B'
 const MUTED = '#5F7188'
 const GREEN = '#18724A'
 const RED = '#A52A2A'
+const AMBER = '#9A6208'
 
 const asDate = value => {
   if (!value) return null
@@ -210,6 +211,38 @@ export function buildPaymentWorkbookSheets(state, intakeId = state.intakeFilter)
   const cancelledPayments = payments.filter(payment => payment.cancelled_at)
   const subtitle = `${intake?.name || 'Vague non classée'} · Export du ${exportDateLabel()}`
 
+  const paymentSituationRows = enrollments
+    .filter(enrollment => enrollment.formation_id)
+    .slice()
+    .sort((a, b) => {
+      const studentA = state.students.find(item => item.id === a.student_id)
+      const studentB = state.students.find(item => item.id === b.student_id)
+      const nameA = `${studentA?.last_name || ''} ${studentA?.first_name || ''}`
+      const nameB = `${studentB?.last_name || ''} ${studentB?.first_name || ''}`
+      return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' }) || Number(a.slot || 0) - Number(b.slot || 0)
+    })
+    .map(enrollment => {
+      const student = state.students.find(item => item.id === enrollment.student_id)
+      const formation = state.formations.find(item => item.id === enrollment.formation_id)
+      const situation = financialStatus(enrollment, student, state.payments)
+      const paymentState = !situation.accounted
+        ? { value: 'Non comptabilisé', textColor: MUTED, backgroundColor: LIGHT_BLUE, fontWeight: 'bold' }
+        : situation.due > 0 && situation.remaining === 0
+          ? { value: 'Soldé', textColor: GREEN, backgroundColor: '#E8F7EF', fontWeight: 'bold' }
+          : situation.paid > 0
+            ? { value: 'Partiel', textColor: AMBER, backgroundColor: '#FFF4D8', fontWeight: 'bold' }
+            : { value: 'Non payé', textColor: RED, backgroundColor: '#FFF0F0', fontWeight: 'bold' }
+      return [
+        Number(student?.intake_student_number || student?.student_number || 0) || '',
+        `${student?.last_name || ''} ${student?.first_name || ''}`.trim(),
+        formation?.name || '',
+        moneyCell(situation.due),
+        moneyCell(situation.paid),
+        moneyCell(situation.remaining),
+        paymentState
+      ]
+    })
+
   const paymentRows = payments.map(payment => {
     const enrollment = state.enrollments.find(item => item.id === payment.enrollment_id)
     const student = enrollment && state.students.find(item => item.id === enrollment.student_id)
@@ -268,6 +301,7 @@ export function buildPaymentWorkbookSheets(state, intakeId = state.intakeFilter)
     fileName: `BEVA_Paiements_${cleanFilePart(intake?.name)}_${new Date().toISOString().slice(0, 10)}.xlsx`,
     sheets: [
       makeSheet({ sheet: 'Synthèse', title: 'BEVA — Synthèse des paiements', subtitle, headers: ['Indicateur', 'Valeur'], widths: [38, 28], rows: summaryRows, zoomScale: 1 }),
+      makeSheet({ sheet: 'Situation par formation', title: 'BEVA — Situation des paiements par formation', subtitle: `${subtitle} · Une ligne par étudiant et par formation sélectionnée. Les versements annulés sont exclus.`, headers: ['N° élève', 'Nom de l’étudiant', 'Formation', 'Coût total', 'Montant versé', 'Solde restant', 'État du paiement'], widths: [11, 28, 25, 18, 18, 18, 20], rows: paymentSituationRows, zoomScale: 0.9 }),
       makeSheet({ sheet: 'Paiements', title: 'BEVA — Historique des paiements', subtitle: `${subtitle} · ${payments.length} versement(s), annulations incluses`, headers: ['Date', 'Référence', 'Code dossier', 'N° élève', 'Nom', 'Prénom(s)', 'Formation', 'Montant', 'Moyen', 'Mois', 'Tranche', 'État', 'Motif d’annulation', 'Reçu par', 'Notes'], widths: [20, 30, 14, 10, 18, 22, 23, 17, 18, 17, 12, 15, 30, 24, 32], rows: paymentRows, zoomScale: 0.8 }),
       makeSheet({ sheet: 'En attente', title: 'BEVA — Paiements en attente d’affectation', subtitle: `Situation globale · Export du ${exportDateLabel()} · ${pending.length} paiement(s)`, headers: ['Date', 'Référence', 'Nom', 'Prénom(s)', 'Téléphone', 'Formation souhaitée', 'Montant', 'Moyen', 'Tarif', 'Notes', 'Reçu par'], widths: [20, 30, 18, 22, 17, 24, 17, 18, 16, 35, 24], rows: pendingRows })
     ]
