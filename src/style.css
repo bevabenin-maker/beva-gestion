@@ -120,8 +120,9 @@ input:focus, select:focus, textarea:focus { border-color: #1b5faa; box-shadow: 0
 .tools { display: flex; gap: 10px; }
 .tools input { width: min(300px, 45vw); }
 .export-tools { align-items: center; }
-.export-excel { min-height: 42px; white-space: nowrap; }
-.export-excel:disabled { cursor: wait; opacity: .7; }
+.excel-actions { display: flex; gap: 8px; }
+.export-excel, .import-excel { min-height: 42px; white-space: nowrap; }
+.export-excel:disabled, .import-excel:disabled { cursor: wait; opacity: .7; }
 .payment-export-tools { display: grid; min-width: 250px; gap: 10px; }
 .payment-export-tools .export-excel { width: 100%; }
 .table-wrap { overflow-x: auto; }
@@ -141,6 +142,26 @@ td { font-size: 14px; }
 .formation-cell { min-width: 210px; }
 .legacy-code { display: block; margin-top: 4px; color: #78879b; font-size: 11px; font-weight: 600; }
 .modal-context { margin: 0 0 18px; }
+.import-intro { padding: 15px 16px; border: 1px solid #cfe2f7; border-radius: 13px; color: #214e7f; background: #edf6ff; }
+.import-intro p { margin: 7px 0 0; font-size: 13px; line-height: 1.5; }
+.import-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.file-picker { display: grid; place-items: center; min-height: 44px; padding: 10px 14px; border: 1px dashed #7da5cf; border-radius: 11px; color: #123b69; background: #f4f8fd; cursor: pointer; text-align: center; }
+.file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.import-result { margin-top: 17px; }
+.import-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.import-summary > div { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce7f4; border-radius: 11px; background: #f5f9fd; color: #61738a; font-size: 12px; font-weight: 700; }
+.import-summary strong { color: #092f5b; font-size: 20px; }
+.import-summary .import-valid { border-color: #b8dfc9; background: #eef9f3; }
+.import-summary .import-invalid { border-color: #efc6c2; background: #fff4f3; }
+.import-preview { max-height: 330px; margin-top: 12px; border: 1px solid #e1e8f1; border-radius: 11px; }
+.import-preview th { position: sticky; top: 0; z-index: 1; }
+.import-preview td { white-space: normal; vertical-align: top; }
+.import-preview td:nth-child(2) { min-width: 180px; }
+.import-preview td:nth-child(3) { min-width: 220px; }
+.import-preview td:last-child { min-width: 260px; }
+.import-preview small { color: #718096; }
+.import-preview ul { padding-left: 18px; margin: 8px 0 0; color: #a52a2a; font-size: 12px; }
+.import-row-invalid { background: #fffafa; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(3, 14, 28, .58); }
 .modal { width: min(680px, 100%); max-height: 92vh; overflow-y: auto; border-radius: 18px; background: white; }
@@ -259,8 +280,9 @@ td { font-size: 14px; }
   .topbar-actions select { min-width: 0; flex: 1; }
   .topbar-actions .primary { white-space: nowrap; padding-inline: 12px; }
   .tools { flex-direction: column; }
+  .excel-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .export-tools, .payment-export-tools { width: 100%; min-width: 0; align-items: stretch; }
-  .export-tools .export-excel, .payment-export-tools .export-excel { width: 100%; min-height: 46px; }
+  .export-tools .export-excel, .export-tools .import-excel, .payment-export-tools .export-excel { width: 100%; min-height: 46px; }
   .panel-head { align-items: stretch; flex-direction: column; padding: 15px; }
   .panel-head h2 { font-size: 17px; line-height: 1.28; }
   .panel-head > .primary { width: 100%; }
@@ -312,6 +334,8 @@ td { font-size: 14px; }
   .modal-backdrop { align-items: end; padding: 0; }
   .modal { width: 100%; max-height: 90vh; border-radius: 20px 20px 0 0; }
   .modal-head, .modal-body { padding: 16px; }
+  .import-steps, .import-summary { grid-template-columns: 1fr; }
+  .import-preview { max-height: 42vh; }
   .modal-actions { flex-wrap: wrap; }
   .modal-actions button { flex: 1 1 140px; }
   .history-overview { grid-template-columns: 1fr; }
