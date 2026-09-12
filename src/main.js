@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { downloadPaymentsExcel, downloadStudentsExcel } from './excelExport.js'
+import { downloadStudentImportTemplate, parseStudentImportFile } from './excelImport.js'
 import './style.css'
 
 const SUPABASE_URL = 'https://bxhgptcsuhbfuqamcdxs.supabase.co'
@@ -403,7 +404,7 @@ function shellView() {
 function studentPanel(title, students, searchable = false) {
   const ageStats = studentAgeStats(students)
   return `${searchable ? ageStatisticsPanel(ageStats) : ''}<div class="panel student-panel">
-    <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools export-tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"><button id="export-students-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div>' : ''}</div>
+    <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools export-tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"><div class="excel-actions"><button id="import-students-excel" class="secondary import-excel" type="button">↑ Importer Excel</button><button id="export-students-excel" class="secondary export-excel" type="button">↓ Exporter Excel</button></div></div>' : ''}</div>
     <div class="mobile-student-list">${studentMobileCards(students)}</div>
     <div class="table-wrap desktop-table"><table><thead><tr><th>N°</th><th>Nom et prénom</th><th>Âge</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
     <tbody id="${searchable ? 'student-table' : 'recent-table'}">${studentRows(students)}</tbody></table>
@@ -593,6 +594,7 @@ function bindShell() {
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
   document.querySelector('#add-pending-payment')?.addEventListener('click', pendingPaymentModal)
+  document.querySelector('#import-students-excel')?.addEventListener('click', studentImportModal)
   document.querySelector('#export-students-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadStudentsExcel(state, state.intakeFilter), 'Données des élèves exportées.'))
   document.querySelector('#export-payments-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadPaymentsExcel(state, state.intakeFilter), 'Données des paiements exportées.'))
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
@@ -633,6 +635,78 @@ function bindShell() {
     panel.querySelectorAll('.student-notes').forEach(button => button.addEventListener('click', () => studentNotesModal(button.dataset.id)))
     panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
     panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
+  })
+}
+
+function importPreviewMarkup(result) {
+  const rows = result.rows.slice(0, 60).map(item => {
+    const student = item.normalized
+    const formations = student.enrollments.map(enrollment => `${enrollment.formation_name} (${enrollment.status === 'inscrit' ? 'Actif' : 'Disponible'})`).join(', ') || 'Aucune'
+    return `<tr class="${item.valid ? '' : 'import-row-invalid'}"><td>${item.line}</td><td><strong>${esc(student.last_name || '—')} ${esc(student.first_name || '')}</strong><br><small>${esc(student.phone || student.email || '')}</small></td><td>${esc(formations)}</td><td>${item.valid ? '<span class="badge ok">Prête</span>' : `<span class="badge due">À corriger</span><ul>${item.issues.map(issue => `<li>${esc(issue)}</li>`).join('')}</ul>`}</td></tr>`
+  }).join('')
+  const omitted = result.rows.length > 60 ? `<p class="muted">Aperçu limité aux 60 premières lignes. ${result.rows.length - 60} ligne(s) supplémentaire(s) ont bien été vérifiées.</p>` : ''
+  return `<div class="import-summary"><div><span>Lignes détectées</span><strong>${result.total}</strong></div><div class="import-valid"><span>Prêtes à importer</span><strong>${result.valid}</strong></div><div class="import-invalid"><span>À corriger / doublons</span><strong>${result.invalid}</strong></div></div><p class="muted">Les lignes signalées ne seront pas enregistrées. Les paiements ne sont jamais modifiés par cet import.</p><div class="table-wrap import-preview"><table><thead><tr><th>Ligne</th><th>Élève</th><th>Formations</th><th>Contrôle</th></tr></thead><tbody>${rows}</tbody></table></div>${omitted}`
+}
+
+function studentImportModal() {
+  const intake = selectedIntake()
+  if (!intake) return toast('Choisissez une vague avant de lancer l’import.', true)
+  let parsedResult = null
+  const modal = showModal('Importer des élèves depuis Excel', `<section class="import-intro"><strong>Vague de destination : ${esc(intake.name)}</strong><p>Téléchargez le modèle BEVA, remplissez la feuille « Élèves à importer », puis chargez le même fichier ici. Le fichier est contrôlé avant tout enregistrement.</p></section><div class="import-steps"><button id="download-import-template" class="secondary" type="button">1. Télécharger le modèle Excel</button><label class="file-picker">2. Choisir le fichier rempli<input id="student-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label></div><div id="student-import-result" class="import-result"><div class="empty">Aucun fichier analysé.</div></div><p id="student-import-error" class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button id="confirm-student-import" class="primary" type="button" disabled>Importer les lignes valides</button></div>`)
+  const templateButton = modal.querySelector('#download-import-template')
+  const fileInput = modal.querySelector('#student-import-file')
+  const confirmButton = modal.querySelector('#confirm-student-import')
+  const errorElement = modal.querySelector('#student-import-error')
+  const resultElement = modal.querySelector('#student-import-result')
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  templateButton.addEventListener('click', async () => {
+    const originalText = templateButton.textContent
+    templateButton.disabled = true
+    templateButton.textContent = 'Préparation du modèle…'
+    try {
+      await downloadStudentImportTemplate(state, state.intakeFilter)
+      toast('Modèle d’import Excel téléchargé.')
+    } catch (error) {
+      errorElement.textContent = `Le modèle n’a pas pu être téléchargé : ${error?.message || 'erreur inconnue'}`
+    } finally {
+      templateButton.disabled = false
+      templateButton.textContent = originalText
+    }
+  })
+  fileInput.addEventListener('change', async () => {
+    parsedResult = null
+    confirmButton.disabled = true
+    errorElement.textContent = ''
+    resultElement.innerHTML = '<div class="empty">Analyse du fichier…</div>'
+    try {
+      parsedResult = await parseStudentImportFile(fileInput.files?.[0], state, state.intakeFilter)
+      resultElement.innerHTML = importPreviewMarkup(parsedResult)
+      confirmButton.disabled = parsedResult.valid === 0
+      confirmButton.textContent = `Importer ${parsedResult.valid} ligne${parsedResult.valid > 1 ? 's' : ''} valide${parsedResult.valid > 1 ? 's' : ''}`
+    } catch (error) {
+      resultElement.innerHTML = '<div class="empty">Le fichier n’a pas pu être validé.</div>'
+      errorElement.textContent = error?.message || 'Erreur de lecture du fichier Excel.'
+    }
+  })
+  confirmButton.addEventListener('click', async () => {
+    if (!parsedResult?.validRows.length) return
+    const expectedIntake = state.intakeFilter
+    confirmButton.disabled = true
+    fileInput.disabled = true
+    templateButton.disabled = true
+    confirmButton.textContent = 'Import en cours…'
+    errorElement.textContent = ''
+    const { data, error } = await supabase.rpc('import_students_from_excel', { p_intake_id: expectedIntake, p_rows: parsedResult.validRows })
+    if (error) {
+      errorElement.textContent = `Aucune ligne n’a été importée : ${error.message}`
+      confirmButton.disabled = false
+      fileInput.disabled = false
+      templateButton.disabled = false
+      confirmButton.textContent = `Réessayer l’import de ${parsedResult.validRows.length} ligne(s)`
+      return
+    }
+    modal.remove()
+    await refresh(`${Number(data?.imported_count || parsedResult.validRows.length)} élève(s) importé(s) dans ${intake.name}.`)
   })
 }
 
