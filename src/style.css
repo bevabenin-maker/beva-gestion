@@ -125,6 +125,11 @@ input:focus, select:focus, textarea:focus { border-color: #1b5faa; box-shadow: 0
 .export-excel:disabled, .import-excel:disabled { cursor: wait; opacity: .7; }
 .payment-export-tools { display: grid; min-width: 250px; gap: 10px; }
 .payment-export-tools .export-excel { width: 100%; }
+.formation-student-summary { margin-bottom: 20px; }
+.formation-student-summary .export-formation-students { min-height: 38px; white-space: nowrap; }
+.formation-student-summary .export-formation-students:disabled { cursor: not-allowed; opacity: .45; }
+.formation-total { display: grid; min-width: 120px; gap: 3px; padding: 10px 13px; border: 1px solid #dce7f4; border-radius: 11px; color: #61738a; background: #f5f9fd; font-size: 11px; font-weight: 700; }
+.formation-total strong { color: #092f5b; font-size: 20px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 13px 16px; border-bottom: 1px solid #edf1f5; text-align: left; white-space: nowrap; }
