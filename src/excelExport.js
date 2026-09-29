@@ -199,6 +199,62 @@ export function buildStudentWorkbookSheets(state, intakeId = state.intakeFilter)
   }
 }
 
+export function buildFormationStudentWorkbookSheets(state, intakeId = state.intakeFilter, formationId) {
+  const intake = state.intakes.find(item => item.id === intakeId)
+  const formation = state.formations.find(item => item.id === formationId)
+  if (!formation) throw new Error('La formation sélectionnée est introuvable.')
+
+  const intakeStudents = state.students.filter(student => student.intake_id === intakeId)
+  const studentsById = new Map(intakeStudents.map(student => [student.id, student]))
+  const enrollmentsByStudent = new Map()
+  state.enrollments
+    .filter(enrollment => enrollment.formation_id === formationId && studentsById.has(enrollment.student_id))
+    .forEach(enrollment => {
+      if (!enrollmentsByStudent.has(enrollment.student_id)) enrollmentsByStudent.set(enrollment.student_id, enrollment)
+    })
+
+  const rows = Array.from(enrollmentsByStudent.entries())
+    .map(([studentId, enrollment]) => ({ student: studentsById.get(studentId), enrollment }))
+    .sort((a, b) => {
+      const nameA = `${a.student.last_name || ''} ${a.student.first_name || ''}`
+      const nameB = `${b.student.last_name || ''} ${b.student.first_name || ''}`
+      return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' })
+        || Number(a.student.intake_student_number || 0) - Number(b.student.intake_student_number || 0)
+    })
+    .map(({ student, enrollment }) => [
+      Number(student.intake_student_number || student.student_number || 0) || '',
+      student.last_name || '',
+      student.first_name || '',
+      student.sex || '',
+      dateCell(student.birth_date),
+      studentAge(student) ?? '',
+      textCell(student.phone),
+      student.email || '',
+      student.address || '',
+      studentStatusLabel(student.status),
+      enrollmentStatusLabel(enrollment.status),
+      learningModeLabel(enrollment.learning_mode),
+      enrollment.scholarship_status ? 'Boursier' : 'Standard',
+      dateCell(student.created_at, true)
+    ])
+
+  const subtitle = `${intake?.name || 'Vague non classée'} · ${rows.length} élève(s) · Export du ${exportDateLabel()}`
+  return {
+    fileName: `BEVA_Liste_${cleanFilePart(formation.name)}_${cleanFilePart(intake?.name)}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    sheets: [
+      makeSheet({
+        sheet: 'Liste des élèves',
+        title: `BEVA — ${formation.name}`,
+        subtitle,
+        headers: ['N°', 'Nom', 'Prénom(s)', 'Sexe', 'Date de naissance', 'Âge', 'Téléphone', 'E-mail', 'Adresse', 'Statut élève', 'Statut formation', 'Mode', 'Tarif', 'Date d’inscription'],
+        widths: [8, 18, 22, 12, 16, 8, 17, 27, 28, 15, 18, 13, 13, 19],
+        rows,
+        zoomScale: 0.85
+      })
+    ]
+  }
+}
+
 export function buildPaymentWorkbookSheets(state, intakeId = state.intakeFilter) {
   const intake = state.intakes.find(item => item.id === intakeId)
   const students = state.students.filter(student => student.intake_id === intakeId)
@@ -315,4 +371,5 @@ async function downloadWorkbook(workbook) {
 }
 
 export const downloadStudentsExcel = (state, intakeId) => downloadWorkbook(buildStudentWorkbookSheets(state, intakeId))
+export const downloadStudentsByFormationExcel = (state, intakeId, formationId) => downloadWorkbook(buildFormationStudentWorkbookSheets(state, intakeId, formationId))
 export const downloadPaymentsExcel = (state, intakeId) => downloadWorkbook(buildPaymentWorkbookSheets(state, intakeId))
