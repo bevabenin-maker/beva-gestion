@@ -1,3 +1,5 @@
+import { classifyStudentsByFormation } from './formationGroups.js'
+
 const NAVY = '#071A33'
 const BLUE = '#0C417D'
 const GOLD = '#D4AF37'
@@ -206,9 +208,12 @@ export function buildFormationStudentWorkbookSheets(state, intakeId = state.inta
 
   const intakeStudents = state.students.filter(student => student.intake_id === intakeId)
   const studentsById = new Map(intakeStudents.map(student => [student.id, student]))
+  const classification = classifyStudentsByFormation({ students: intakeStudents, enrollments: state.enrollments, formations: state.formations })
+  const group = classification.groups.find(item => item.formation.id === formationId)
+  const activeStudentIds = group?.studentIds || new Set()
   const enrollmentsByStudent = new Map()
   state.enrollments
-    .filter(enrollment => enrollment.formation_id === formationId && studentsById.has(enrollment.student_id))
+    .filter(enrollment => enrollment.formation_id === formationId && activeStudentIds.has(enrollment.student_id) && enrollment.status === 'inscrit')
     .forEach(enrollment => {
       if (!enrollmentsByStudent.has(enrollment.student_id)) enrollmentsByStudent.set(enrollment.student_id, enrollment)
     })

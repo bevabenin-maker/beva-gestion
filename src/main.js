@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { downloadPaymentsExcel, downloadStudentsByFormationExcel, downloadStudentsExcel } from './excelExport.js'
 import { downloadStudentImportTemplate, parseStudentImportFile } from './excelImport.js'
+import { classifyStudentsByFormation } from './formationGroups.js'
 import './style.css'
 
 const SUPABASE_URL = 'https://bxhgptcsuhbfuqamcdxs.supabase.co'
@@ -413,17 +414,11 @@ function studentPanel(title, students, searchable = false) {
 }
 
 function formationStudentSummary(students) {
-  const studentIds = new Set(students.map(student => student.id))
-  const assigned = state.enrollments.filter(enrollment => enrollment.formation_id && studentIds.has(enrollment.student_id))
-  const rows = state.formations.map(formation => {
-    const enrollments = assigned.filter(enrollment => enrollment.formation_id === formation.id)
-    const active = enrollments.filter(enrollment => enrollment.status === 'inscrit' && state.students.find(student => student.id === enrollment.student_id)?.status === 'actif').length
-    const available = enrollments.filter(enrollment => enrollment.status === 'disponible').length
-    return `<tr><td><strong>${esc(formation.name)}</strong></td><td>${enrollments.length}</td><td><span class="badge ok">${active}</span></td><td><span class="badge warning">${available}</span></td><td><button class="secondary export-formation-students" data-formation-id="${formation.id}" type="button" ${enrollments.length ? '' : 'disabled'}>↓ Exporter la liste</button></td></tr>`
-  }).join('')
-  const studentsWithFormation = new Set(assigned.map(enrollment => enrollment.student_id))
-  const withoutFormation = students.filter(student => !studentsWithFormation.has(student.id)).length
-  return `<section class="panel formation-student-summary desktop-only"><div class="panel-head"><div><h2>Élèves par formation</h2><p class="muted">Une personne inscrite à plusieurs formations est comptée dans chacune d’elles.</p></div><div class="formation-total"><span>Sans formation</span><strong>${withoutFormation}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Formation</th><th>Total</th><th>Actifs</th><th>Disponibles</th><th>Liste Excel</th></tr></thead><tbody>${rows}</tbody></table></div></section>`
+  const classification = classifyStudentsByFormation({ students, enrollments: state.enrollments, formations: state.formations })
+  const rows = classification.groups.map(({ formation, students: formationStudents }) => `<tr><td><strong>${esc(formation.name)}</strong></td><td><span class="badge ok">${formationStudents.length}</span></td><td><button class="secondary export-formation-students" data-formation-id="${formation.id}" type="button" ${formationStudents.length ? '' : 'disabled'}>↓ Exporter la liste</button></td></tr>`).join('')
+  const mobileRows = classification.groups.map(({ formation, students: formationStudents }) => `<div class="formation-mobile-row"><div><strong>${esc(formation.name)}</strong><small>Dossiers actifs uniquement</small></div><span>${formationStudents.length}</span></div>`).join('')
+  const withoutFormation = classification.unclassifiedStudents.length
+  return `<section class="panel formation-student-summary"><div class="panel-head"><div><h2>Répartition par formation</h2><p class="muted">Seuls les dossiers actifs sont classés par formation. Une personne inscrite à plusieurs formations actives est comptée dans chacune d’elles.</p></div><div class="formation-total"><span>Sans formation / à classer</span><strong>${withoutFormation}</strong></div></div><div class="mobile-formation-list">${mobileRows}<div class="formation-mobile-row unclassified"><div><strong>Sans formation / à classer</strong><small>Disponibles, suspendus ou sans dossier actif</small></div><span>${withoutFormation}</span></div></div><div class="table-wrap formation-desktop-table"><table><thead><tr><th>Formation</th><th>Élèves actifs</th><th>Liste Excel</th></tr></thead><tbody>${rows}</tbody></table></div></section>`
 }
 
 function studentAgeStats(students) {
@@ -455,12 +450,13 @@ function ageStatisticsPanel(stats) {
 function studentMobileCards(students) {
   if (!students.length) return '<div class="empty">Aucun étudiant enregistré.</div>'
   return students.map(student => {
-    const items = state.enrollments.filter(x => x.student_id === student.id && x.status !== 'disponible')
-    const age = studentAge(student)
+    const activeItems = state.enrollments.filter(x => x.student_id === student.id && activeEnrollment(x))
     const notes = studentNotesFor(student.id)
     const followUp = followUpNote(student.id)
     const statusClass = student.status === 'actif' ? 'ok' : student.status === 'abandonne' ? 'due' : 'warning'
-    return `<article class="student-mobile-card"><div><span class="code">N° ${esc(student.intake_student_number || '—')}</span><span class="badge ${statusClass}">${esc(studentStatusLabel(student.status))}</span></div><button class="link-btn student-payment-history" data-id="${student.id}" title="Voir son historique de paiements"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong></button><dl><div><dt>Âge</dt><dd>${age === null ? 'Non renseigné' : `${age} ans`}</dd></div><div><dt>Formations</dt><dd>${items.length} / 4</dd></div><div><dt>Téléphone</dt><dd>${esc(student.phone || '—')}</dd></div></dl><div class="student-note-summary"><span>${notes.length} note${notes.length > 1 ? 's' : ''}${followUp ? ` · Relance le ${noteDate(followUp.follow_up_on)}` : ''}</span><button class="secondary student-notes" data-id="${student.id}">Notes de suivi</button></div></article>`
+    const formationNames = activeItems.map(item => formationFor(item)?.name).filter(Boolean).join(', ') || 'Sans formation / à classer'
+    const noteLabel = followUp ? `Relance le ${noteDate(followUp.follow_up_on)}` : `${notes.length} note${notes.length > 1 ? 's' : ''}`
+    return `<article class="student-mobile-card"><button class="student-mobile-toggle" type="button" data-mobile-detail="student-mobile-${student.id}" aria-expanded="false"><span class="student-mobile-number">N° ${esc(student.intake_student_number || '—')}</span><span class="student-mobile-identity"><strong>${esc(student.last_name)} ${esc(student.first_name)}</strong><small>${esc(noteLabel)}</small></span><span class="student-mobile-chevron">⌄</span></button><div class="student-mobile-detail" id="student-mobile-${student.id}"><div class="mobile-detail-grid"><div><span>Classement</span><strong>${esc(formationNames)}</strong></div><div><span>Statut</span><strong class="badge ${statusClass}">${esc(studentStatusLabel(student.status))}</strong></div></div><div class="mobile-detail-actions"><button class="primary manage-student" data-id="${student.id}">Voir le dossier</button><button class="secondary student-notes" data-id="${student.id}">Notes (${notes.length})</button><button class="link-btn student-payment-history" data-id="${student.id}">Paiements</button></div></div></article>`
   }).join('')
 }
 
@@ -562,14 +558,14 @@ function paymentPanel() {
     const progress = monthlyProgress(enrollment, selectedMonth)
     const status = selectedMonth ? monthlyPaymentState(enrollment, selectedMonth) : summary
     const target = selectedMonth ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
-    return `<article class="payment-mobile-card"><div><strong>${esc(displayCode(enrollment.dossier_code))}</strong><span class="badge ${status.className}">${status.label}</span></div><p>${esc(student ? `${student.last_name} ${student.first_name}` : '—')} · ${esc(formation?.name || '—')}</p><dl><div><dt>Payé${selectedMonth ? ' / attendu' : ''}</dt><dd>${target}</dd></div><div><dt>Reste dû</dt><dd>${money(summary.remaining)}</dd></div><div><dt>Frais totaux</dt><dd>${money(summary.due)}</dd></div></dl></article>`
+    return `<article class="payment-mobile-card"><button class="payment-mobile-toggle" type="button" data-mobile-detail="payment-mobile-${enrollment.id}" aria-expanded="false"><span class="payment-mobile-number">${esc(displayCode(enrollment.dossier_code))}</span><span class="payment-mobile-identity"><strong>${esc(student ? `${student.last_name} ${student.first_name}` : '—')}</strong><small>${esc(formation?.name || '—')}</small></span><span class="payment-mobile-raf"><strong>${money(summary.remaining)}</strong><small>RAF</small></span></button><div class="payment-mobile-detail" id="payment-mobile-${enrollment.id}"><div class="mobile-detail-grid payment-detail-grid"><div><span>Payé${selectedMonth ? ' / attendu' : ''}</span><strong>${target}</strong></div><div><span>Reste dû</span><strong>${money(summary.remaining)}</strong></div><div><span>Frais totaux</span><strong>${money(summary.due)}</strong></div><div><span>État</span><strong class="badge ${status.className}">${status.label}</strong></div></div><div class="mobile-detail-actions"><button class="primary pay-slot" data-id="${enrollment.id}">Ajouter paiement</button>${student ? `<button class="secondary student-payment-history" data-id="${student.id}">Historique</button>` : ''}</div></div></article>`
   }).join('')
-  return `${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><div class="payment-export-tools"><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label><button id="export-payments-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
+  return `<div class="payments-layout">${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><div class="payment-export-tools"><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label><button id="export-payments-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
     <div class="panel history-panel"><div class="panel-head"><div><h2>${state.paymentHistoryRange === 'week' ? 'Versements récents — 7 derniers jours' : 'Historique complet des versements'}</h2><p class="muted">Cliquez sur le nom d’un élève pour ouvrir son historique, ses reçus et toutes les actions liées à ses paiements.</p></div><label class="payment-filter">Période<select id="payment-history-range"><option value="week" ${state.paymentHistoryRange === 'week' ? 'selected' : ''}>7 derniers jours</option><option value="all" ${state.paymentHistoryRange === 'all' ? 'selected' : ''}>Tout l’historique</option></select></label></div><div class="table-wrap">
     <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>${rows ? '' : `<div class="empty">${state.paymentHistoryRange === 'week' ? 'Aucun versement au cours des 7 derniers jours.' : 'Aucun paiement enregistré.'}</div>`}</div></div>`
+    <tbody>${rows}</tbody></table>${rows ? '' : `<div class="empty">${state.paymentHistoryRange === 'week' ? 'Aucun versement au cours des 7 derniers jours.' : 'Aucun paiement enregistré.'}</div>`}</div></div></div>`
 }
 
 function pendingPaymentPanel() {
@@ -604,6 +600,7 @@ function intakePanel() {
 }
 
 function bindShell() {
+  bindMobileDisclosures(document)
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
@@ -653,7 +650,17 @@ function bindShell() {
     panel.querySelectorAll('.student-notes').forEach(button => button.addEventListener('click', () => studentNotesModal(button.dataset.id)))
     panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
     panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
+    bindMobileDisclosures(panel)
   })
+}
+
+function bindMobileDisclosures(scope) {
+  scope.querySelectorAll('[data-mobile-detail]').forEach(button => button.addEventListener('click', () => {
+    const detail = document.getElementById(button.dataset.mobileDetail)
+    if (!detail) return
+    const open = detail.classList.toggle('open')
+    button.setAttribute('aria-expanded', String(open))
+  }))
 }
 
 function importPreviewMarkup(result) {
