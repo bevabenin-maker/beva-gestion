@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { downloadPaymentsExcel, downloadStudentsExcel } from './excelExport.js'
+import { downloadPaymentsExcel, downloadStudentsByFormationExcel, downloadStudentsExcel } from './excelExport.js'
 import { downloadStudentImportTemplate, parseStudentImportFile } from './excelImport.js'
 import './style.css'
 
@@ -403,13 +403,27 @@ function shellView() {
 
 function studentPanel(title, students, searchable = false) {
   const ageStats = studentAgeStats(students)
-  return `${searchable ? ageStatisticsPanel(ageStats) : ''}<div class="panel student-panel">
+  return `${searchable ? formationStudentSummary(students) + ageStatisticsPanel(ageStats) : ''}<div class="panel student-panel">
     <div class="panel-head"><h2>${title}</h2>${searchable ? '<div class="tools export-tools"><input id="student-search" placeholder="Rechercher un nom, numéro ou téléphone"><div class="excel-actions"><button id="import-students-excel" class="secondary import-excel" type="button">↑ Importer Excel</button><button id="export-students-excel" class="secondary export-excel" type="button">↓ Exporter Excel</button></div></div>' : ''}</div>
     <div class="mobile-student-list">${studentMobileCards(students)}</div>
     <div class="table-wrap desktop-table"><table><thead><tr><th>N°</th><th>Nom et prénom</th><th>Âge</th><th>Vague</th><th>Téléphone</th><th>Formations</th><th>Action</th></tr></thead>
     <tbody id="${searchable ? 'student-table' : 'recent-table'}">${studentRows(students)}</tbody></table>
     ${students.length ? '' : '<div class="empty">Aucun étudiant enregistré.</div>'}</div>
   </div>`
+}
+
+function formationStudentSummary(students) {
+  const studentIds = new Set(students.map(student => student.id))
+  const assigned = state.enrollments.filter(enrollment => enrollment.formation_id && studentIds.has(enrollment.student_id))
+  const rows = state.formations.map(formation => {
+    const enrollments = assigned.filter(enrollment => enrollment.formation_id === formation.id)
+    const active = enrollments.filter(enrollment => enrollment.status === 'inscrit' && state.students.find(student => student.id === enrollment.student_id)?.status === 'actif').length
+    const available = enrollments.filter(enrollment => enrollment.status === 'disponible').length
+    return `<tr><td><strong>${esc(formation.name)}</strong></td><td>${enrollments.length}</td><td><span class="badge ok">${active}</span></td><td><span class="badge warning">${available}</span></td><td><button class="secondary export-formation-students" data-formation-id="${formation.id}" type="button" ${enrollments.length ? '' : 'disabled'}>↓ Exporter la liste</button></td></tr>`
+  }).join('')
+  const studentsWithFormation = new Set(assigned.map(enrollment => enrollment.student_id))
+  const withoutFormation = students.filter(student => !studentsWithFormation.has(student.id)).length
+  return `<section class="panel formation-student-summary desktop-only"><div class="panel-head"><div><h2>Élèves par formation</h2><p class="muted">Une personne inscrite à plusieurs formations est comptée dans chacune d’elles.</p></div><div class="formation-total"><span>Sans formation</span><strong>${withoutFormation}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Formation</th><th>Total</th><th>Actifs</th><th>Disponibles</th><th>Liste Excel</th></tr></thead><tbody>${rows}</tbody></table></div></section>`
 }
 
 function studentAgeStats(students) {
@@ -596,6 +610,10 @@ function bindShell() {
   document.querySelector('#add-pending-payment')?.addEventListener('click', pendingPaymentModal)
   document.querySelector('#import-students-excel')?.addEventListener('click', studentImportModal)
   document.querySelector('#export-students-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadStudentsExcel(state, state.intakeFilter), 'Données des élèves exportées.'))
+  document.querySelectorAll('.export-formation-students').forEach(button => button.addEventListener('click', event => {
+    const formation = state.formations.find(item => item.id === button.dataset.formationId)
+    runExcelExport(event.currentTarget, () => downloadStudentsByFormationExcel(state, state.intakeFilter, button.dataset.formationId), `Liste ${formation?.name || 'de la formation'} exportée.`)
+  }))
   document.querySelector('#export-payments-excel')?.addEventListener('click', event => runExcelExport(event.currentTarget, () => downloadPaymentsExcel(state, state.intakeFilter), 'Données des paiements exportées.'))
   document.querySelector('#add-intake')?.addEventListener('click', newIntakeModal)
   document.querySelectorAll('.edit-intake').forEach(button => button.addEventListener('click', () => editIntakeModal(button.dataset.id)))
