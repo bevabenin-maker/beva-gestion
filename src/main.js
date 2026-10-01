@@ -493,6 +493,19 @@ function paymentHistoryRow(payment) {
     <td>${cancelled ? '—' : money(remaining)}</td><td><span class="badge">${paymentMonthLabel(payment.billing_month)}${payment.installment ? ' · Tranche ' + payment.installment : ''}</span></td><td><span class="badge">${esc(paymentMethodLabel(payment.method))}</span></td><td>${cancelled ? `<span class="badge due">Annulé</span><small class="legacy-code">${esc(payment.cancellation_reason || 'Sans motif')}</small>` : esc(payment.reference || '—')}</td><td>${paymentActionButtons(payment)}</td></tr>`
 }
 
+function paymentHistoryMobileCards(payments) {
+  if (!payments.length) return `<div class="empty">${state.paymentHistoryRange === 'week' ? 'Aucun versement au cours des 7 derniers jours.' : 'Aucun paiement enregistré.'}</div>`
+  return payments.map(payment => {
+    const enrollment = state.enrollments.find(x => x.id === payment.enrollment_id)
+    const student = enrollment && studentFor(enrollment)
+    const formation = enrollment && formationFor(enrollment)
+    const remaining = enrollment ? accountedFinancialStatus(enrollment).remaining : 0
+    const cancelled = paymentIsCancelled(payment)
+    const detailId = `history-mobile-${payment.id}`
+    return `<article class="history-mobile-card"><button class="history-mobile-toggle" type="button" data-mobile-detail="${detailId}" aria-expanded="false"><span class="history-mobile-date">${esc(new Date(payment.paid_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }))}</span><span class="history-mobile-identity"><strong>${student ? `${esc(student.last_name)} ${esc(student.first_name)}` : '—'}</strong><small>${esc(formation?.name || 'Formation non précisée')} · ${esc(displayCode(enrollment?.dossier_code))}</small></span><span class="history-mobile-amount"><strong>${money(payment.amount)}</strong><small>${cancelled ? 'Annulé' : 'Versé'}</small></span></button><div class="history-mobile-detail" id="${detailId}"><div class="mobile-detail-grid payment-detail-grid"><div><span>Reste du dossier</span><strong>${cancelled ? '—' : money(remaining)}</strong></div><div><span>Mois / tranche</span><strong>${paymentMonthLabel(payment.billing_month)}${payment.installment ? ` · Tranche ${payment.installment}` : ''}</strong></div><div><span>Moyen</span><strong>${esc(paymentMethodLabel(payment.method))}</strong></div><div><span>Date et heure</span><strong>${esc(dateTime(payment.paid_at))}</strong></div></div>${cancelled ? `<p class="history-cancel-reason">Motif : ${esc(payment.cancellation_reason || 'Sans motif')}</p>` : ''}${paymentActionButtons(payment)}</div></article>`
+  }).join('')
+}
+
 function paymentAuditDescription(entry) {
   const before = entry.before_data || {}
   const after = entry.after_data || {}
@@ -544,6 +557,7 @@ function paymentPanel() {
   const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000
   const historyPayments = state.paymentHistoryRange === 'all' ? historyScope : historyScope.filter(payment => new Date(payment.paid_at).getTime() >= weekStart)
   const rows = historyPayments.map(paymentHistoryRow).join('')
+  const mobileHistory = paymentHistoryMobileCards(historyPayments)
   const monthOptions = Array.from({ length: maxPaymentMonths() }, (_, i) => i + 1).map(month => `<option value="${month}" ${String(month) === state.paymentMonth ? 'selected' : ''}>Mois ${month} — impayés à cette échéance</option>`).join('')
   const monthCounts = selectedMonth ? followUpEnrollments.reduce((counts, enrollment) => {
     const status = monthlyPaymentState(enrollment, selectedMonth).label
@@ -558,12 +572,12 @@ function paymentPanel() {
     const progress = monthlyProgress(enrollment, selectedMonth)
     const status = selectedMonth ? monthlyPaymentState(enrollment, selectedMonth) : summary
     const target = selectedMonth ? `${money(progress.paid)} / ${money(progress.required)}` : money(summary.paid)
-    return `<article class="payment-mobile-card"><button class="payment-mobile-toggle" type="button" data-mobile-detail="payment-mobile-${enrollment.id}" aria-expanded="false"><span class="payment-mobile-number">${esc(displayCode(enrollment.dossier_code))}</span><span class="payment-mobile-identity"><strong>${esc(student ? `${student.last_name} ${student.first_name}` : '—')}</strong><small>${esc(formation?.name || '—')}</small></span><span class="payment-mobile-raf"><strong>${money(summary.remaining)}</strong><small>RAF</small></span></button><div class="payment-mobile-detail" id="payment-mobile-${enrollment.id}"><div class="mobile-detail-grid payment-detail-grid"><div><span>Payé${selectedMonth ? ' / attendu' : ''}</span><strong>${target}</strong></div><div><span>Reste dû</span><strong>${money(summary.remaining)}</strong></div><div><span>Frais totaux</span><strong>${money(summary.due)}</strong></div><div><span>État</span><strong class="badge ${status.className}">${status.label}</strong></div></div><div class="mobile-detail-actions"><button class="primary pay-slot" data-id="${enrollment.id}">Ajouter paiement</button>${student ? `<button class="secondary student-payment-history" data-id="${student.id}">Historique</button>` : ''}</div></div></article>`
+    return `<article class="payment-mobile-card"><button class="payment-mobile-toggle" type="button" data-mobile-detail="payment-mobile-${enrollment.id}" aria-expanded="false"><span class="payment-mobile-number">${esc(displayCode(enrollment.dossier_code))}</span><span class="payment-mobile-identity"><strong>${esc(student ? `${student.last_name} ${student.first_name}` : '—')}</strong><small>${esc(formation?.name || '—')}</small></span><span class="payment-mobile-raf"><strong>${money(summary.remaining)}</strong><small>Reste à payer</small></span></button><div class="payment-mobile-detail" id="payment-mobile-${enrollment.id}"><div class="mobile-detail-grid payment-detail-grid"><div><span>Payé${selectedMonth ? ' / attendu' : ''}</span><strong>${target}</strong></div><div><span>Reste dû</span><strong>${money(summary.remaining)}</strong></div><div><span>Frais totaux</span><strong>${money(summary.due)}</strong></div><div><span>État</span><strong class="badge ${status.className}">${status.label}</strong></div></div><div class="mobile-detail-actions"><button class="primary pay-slot" data-id="${enrollment.id}">Ajouter paiement</button>${student ? `<button class="secondary student-payment-history" data-id="${student.id}">Historique</button>` : ''}</div></div></article>`
   }).join('')
   return `<div class="payments-layout">${pendingPaymentPanel()}<div class="panel financial-panel"><div class="panel-head"><div><h2>Suivi financier par formation</h2><p class="muted">Le filtre mensuel ne montre que les dossiers actifs. Les dossiers abandonnés ou non actifs restent visibles dans l’historique.</p>${monthlySummary}</div><div class="payment-export-tools"><label class="payment-filter">Échéance<select id="payment-month-filter"><option value="all" ${state.paymentMonth === 'all' ? 'selected' : ''}>Vue complète</option>${monthOptions}<option value="settled" ${state.paymentMonth === 'settled' ? 'selected' : ''}>Soldés — 3 mois</option></select></label><button id="export-payments-excel" class="secondary export-excel" type="button">↓ Exporter en Excel</button></div></div><div class="mobile-payment-list">${mobileCards || '<div class="empty">Aucun dossier pour cette échéance.</div>'}</div><div class="table-wrap desktop-table">
     <table><thead><tr><th>Dossier</th><th>Étudiant</th><th>Formation</th><th>Bourse</th><th>Payé / attendu</th><th>Reste dû</th><th>Frais totaux</th><th>État</th><th></th></tr></thead>
     <tbody>${enrollmentRows}</tbody></table>${enrollmentRows ? '' : '<div class="empty">Aucun dossier impayé pour cette échéance.</div>'}</div></div>
-    <div class="panel history-panel"><div class="panel-head"><div><h2>${state.paymentHistoryRange === 'week' ? 'Versements récents — 7 derniers jours' : 'Historique complet des versements'}</h2><p class="muted">Cliquez sur le nom d’un élève pour ouvrir son historique, ses reçus et toutes les actions liées à ses paiements.</p></div><label class="payment-filter">Période<select id="payment-history-range"><option value="week" ${state.paymentHistoryRange === 'week' ? 'selected' : ''}>7 derniers jours</option><option value="all" ${state.paymentHistoryRange === 'all' ? 'selected' : ''}>Tout l’historique</option></select></label></div><div class="table-wrap">
+    <div class="panel history-panel"><div class="panel-head"><div><h2>${state.paymentHistoryRange === 'week' ? 'Versements récents — 7 derniers jours' : 'Historique complet des versements'}</h2><p class="muted">Touchez un versement pour afficher son reçu et toutes les informations associées.</p></div><label class="payment-filter">Période<select id="payment-history-range"><option value="week" ${state.paymentHistoryRange === 'week' ? 'selected' : ''}>7 derniers jours</option><option value="all" ${state.paymentHistoryRange === 'all' ? 'selected' : ''}>Tout l’historique</option></select></label></div><div class="mobile-payment-history">${mobileHistory}</div><div class="table-wrap history-desktop-table">
     <table><thead><tr><th>Date</th><th>Dossier</th><th>Étudiant</th><th>Montant</th><th>Reste du dossier</th><th>Mois / tranche</th><th>Moyen</th><th>Référence</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>${rows ? '' : `<div class="empty">${state.paymentHistoryRange === 'week' ? 'Aucun versement au cours des 7 derniers jours.' : 'Aucun paiement enregistré.'}</div>`}</div></div></div>`
 }
@@ -600,7 +614,7 @@ function intakePanel() {
 }
 
 function bindShell() {
-  bindMobileDisclosures(document)
+  bindMobileDisclosures()
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
@@ -650,17 +664,20 @@ function bindShell() {
     panel.querySelectorAll('.student-notes').forEach(button => button.addEventListener('click', () => studentNotesModal(button.dataset.id)))
     panel.querySelectorAll('.manage-student').forEach(button => button.addEventListener('click', () => manageStudentModal(button.dataset.id)))
     panel.querySelectorAll('.delete-student').forEach(button => button.addEventListener('click', () => deleteStudentModal(button.dataset.id)))
-    bindMobileDisclosures(panel)
   })
 }
 
-function bindMobileDisclosures(scope) {
-  scope.querySelectorAll('[data-mobile-detail]').forEach(button => button.addEventListener('click', () => {
+function bindMobileDisclosures() {
+  if (document.documentElement.dataset.mobileDisclosuresBound === 'true') return
+  document.documentElement.dataset.mobileDisclosuresBound = 'true'
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-mobile-detail]')
+    if (!button) return
     const detail = document.getElementById(button.dataset.mobileDetail)
     if (!detail) return
     const open = detail.classList.toggle('open')
     button.setAttribute('aria-expanded', String(open))
-  }))
+  })
 }
 
 function importPreviewMarkup(result) {
