@@ -199,6 +199,7 @@ td { font-size: 14px; }
 .payment-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; color: #405574; font-size: 13px; }
 .mobile-payment-list { display: none; }
 .mobile-student-list { display: none; }
+.mobile-payment-history { display: none; }
 .student-formations { margin: -1px 0 2px; color: #52657b; font-size: 12px; line-height: 1.4; }
 .student-note-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid #e5ebf3; color: #5d7088; font-size: 12px; }
 .student-note-summary .secondary { padding: 8px 11px; font-size: 12px; }
@@ -316,7 +317,7 @@ td { font-size: 14px; }
   .student-panel .excel-actions { display: none; }
   .mobile-student-list { display: grid; gap: 8px; padding: 10px; }
   .student-mobile-card { overflow: hidden; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
-  .student-mobile-toggle, .payment-mobile-toggle { width: 100%; min-height: 62px; padding: 9px 10px; border: 0; display: grid; align-items: center; gap: 9px; color: inherit; background: transparent; text-align: left; }
+  .student-mobile-toggle, .payment-mobile-toggle, .history-mobile-toggle { width: 100%; min-height: 62px; padding: 9px 10px; border: 0; display: grid; align-items: center; gap: 9px; color: inherit; background: transparent; text-align: left; touch-action: manipulation; }
   .student-mobile-toggle { grid-template-columns: 44px minmax(0, 1fr) 20px; }
   .student-mobile-number, .payment-mobile-number { display: grid; place-items: center; min-height: 38px; padding: 5px; border-radius: 11px; color: #fff; background: #092f5b; font-size: 10px; font-weight: 900; }
   .student-mobile-identity, .payment-mobile-identity { min-width: 0; }
@@ -324,8 +325,8 @@ td { font-size: 14px; }
   .student-mobile-identity small, .payment-mobile-identity small { display: block; margin-top: 4px; overflow: hidden; color: #718096; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .student-mobile-chevron { color: #718096; font-size: 20px; transition: transform .18s ease; }
   .student-mobile-toggle[aria-expanded="true"] .student-mobile-chevron { transform: rotate(180deg); }
-  .student-mobile-detail, .payment-mobile-detail { display: none; padding: 0 10px 11px; border-top: 1px solid #edf1f5; }
-  .student-mobile-detail.open, .payment-mobile-detail.open { display: block; }
+  .student-mobile-detail, .payment-mobile-detail, .history-mobile-detail { display: none; padding: 0 10px 11px; border-top: 1px solid #edf1f5; }
+  .student-mobile-detail.open, .payment-mobile-detail.open, .history-mobile-detail.open { display: block; }
   .mobile-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(92px, .45fr); gap: 8px; padding-top: 10px; }
   .mobile-detail-grid > div { min-width: 0; padding: 9px; border-radius: 10px; background: #f1f6fc; }
   .mobile-detail-grid span { display: block; color: #66758a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
@@ -357,11 +358,23 @@ td { font-size: 14px; }
   .payment-mobile-raf strong { display: block; color: #a52a2a; font-size: 11px; white-space: nowrap; }
   .payment-mobile-raf small { display: block; margin-top: 3px; color: #718096; font-size: 9px; font-weight: 800; }
   .payment-detail-grid { grid-template-columns: 1fr 1fr; }
+  .mobile-payment-history { display: grid; gap: 8px; padding: 10px; }
+  .history-mobile-card { overflow: hidden; border: 1px solid #e1e8f1; border-radius: 13px; background: #fbfdff; }
+  .history-mobile-toggle { grid-template-columns: 42px minmax(0, 1fr) auto; }
+  .history-mobile-date { display: grid; place-items: center; min-height: 38px; padding: 5px; border-radius: 11px; color: #092f5b; background: #eaf0f8; font-size: 10px; font-weight: 900; }
+  .history-mobile-identity { min-width: 0; }
+  .history-mobile-identity strong { display: block; overflow: hidden; color: #14243a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .history-mobile-identity small { display: block; margin-top: 4px; overflow: hidden; color: #718096; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .history-mobile-amount { min-width: 78px; text-align: right; }
+  .history-mobile-amount strong { display: block; color: #18724a; font-size: 11px; white-space: nowrap; }
+  .history-mobile-amount small { display: block; margin-top: 3px; color: #718096; font-size: 9px; font-weight: 800; }
+  .history-mobile-detail .row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; gap: 7px; margin-top: 9px; }
+  .history-mobile-detail .row-actions button { min-height: 39px; padding: 8px; font-size: 11px; }
+  .history-cancel-reason { margin: 9px 0 0; padding: 9px; border-radius: 9px; color: #8f1d16; background: #fff2f0; font-size: 11px; }
   .financial-panel { overflow: visible; }
   .financial-panel .panel-head { position: static; }
   .financial-panel .payment-filter select { min-height: 46px; font-size: 16px; }
-  .history-panel .table-wrap, .pending-panel .table-wrap { display: none; }
-  .history-panel::after { content: 'Les reçus et les opérations détaillées sont disponibles sur tablette ou ordinateur.'; display: block; padding: 16px; color: #718096; font-size: 13px; line-height: 1.45; }
+  .history-panel .history-desktop-table, .pending-panel .table-wrap { display: none; }
   .pending-panel::after { content: 'La gestion des paiements en attente est disponible sur tablette ou ordinateur.'; display: block; padding: 16px; color: #718096; font-size: 13px; line-height: 1.45; }
   .modal-backdrop { align-items: end; padding: 0; }
   .modal { width: 100%; max-height: 90vh; border-radius: 20px 20px 0 0; }
