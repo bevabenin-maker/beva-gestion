@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { downloadPaymentsExcel, downloadStudentsByFormationExcel, downloadStudentsExcel } from './excelExport.js'
+import { downloadPaymentsExcel, downloadStudentsByFormationExcel, downloadStudentsExcel, downloadWhatsAppContactsExcel } from './excelExport.js'
 import { downloadStudentImportTemplate, parseStudentImportFile } from './excelImport.js'
 import { classifyStudentsByFormation } from './formationGroups.js'
 import './style.css'
@@ -11,7 +11,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week' }
+const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], whatsappContacts: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week', whatsappFilter: 'all', whatsappSearch: '', whatsappAssignee: 'all', whatsappCommercial: 'all', whatsappPage: 1, whatsappPageSize: 50 }
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
@@ -19,6 +19,10 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 // business meaning and is no longer shown to staff or on receipts.
 const displayCode = value => String(value ?? '').replace(/^IN-?/i, '') || '—'
 const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role)
+const whatsappStatusLabel = status => ({ ont_repondu: 'Ont répondu', sans_reponse: 'Sans réponse', jamais_traite: 'Jamais traité', a_verifier: 'À vérifier' }[status] || status || 'À vérifier')
+const whatsappFollowUpLabel = status => ({ en_attente_du_contact: 'En attente du contact', beva_doit_repondre: 'BEVA doit répondre' }[status] || '')
+const commercialStatusLabel = status => ({ a_qualifier: 'À qualifier', interesse: 'Intéressé', a_relancer: 'À relancer', visite_prevue: 'Visite prévue', inscription_en_cours: 'Inscription en cours', inscrit: 'Inscrit', non_interesse: 'Non intéressé' }[status] || status || 'À qualifier')
+const attentionReasonLabel = reason => ({ conseiller: 'Conseiller demandé', appel_demande: 'Appel demandé', message_demande: 'Réponse écrite demandée', justificatif_paiement: 'Paiement à vérifier', inscription: 'Inscription à traiter', question_libre: 'Question libre' }[reason] || '')
 const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status)
 const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status)
 const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : 'Présentiel'
@@ -95,6 +99,26 @@ const canDeleteStudents = () => ['admin', 'direction'].includes(state.staff?.rol
 const canManagePayments = () => ['admin', 'direction'].includes(state.staff?.role)
 const canPermanentlyDeletePayments = () => state.staff?.role === 'admin'
 const dateTime = value => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+const localDay = value => {
+  if (!value) return ''
+  const parts = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Porto-Novo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value))
+  const get = type => parts.find(item => item.type === type)?.value || ''
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+const phoneForWhatsApp = value => String(value || '').replace(/\D/g, '')
+const whatsappName = contact => contact.registration_name || contact.profile_name || `Contact ${contact.phone || contact.wa_id || ''}`
+const whatsappStaffName = id => id ? staffName(id) : 'Non affecté'
+
+async function loadAllWhatsappContacts() {
+  const pageSize = 1000
+  const rows = []
+  for (let from = 0; ; from += pageSize) {
+    const result = await supabase.from('wa_contact_overview').select('*').order('last_message_at', { ascending: false, nullsFirst: false }).range(from, from + pageSize - 1)
+    if (result.error) return result
+    rows.push(...(result.data || []))
+    if ((result.data || []).length < pageSize) return { data: rows, error: null }
+  }
+}
 const auditActionLabel = action => ({ created: 'Versement enregistré', updated: 'Versement modifié', cancelled: 'Versement annulé', deleted: 'Versement supprimé' }[action] || 'Mise à jour')
 const staffName = id => state.staffDirectory.find(x => x.user_id === id)?.full_name || 'Système / ancien enregistrement'
 const studentNotesFor = studentId => state.studentNotes.filter(note => note.student_id === studentId)
@@ -304,7 +328,7 @@ function choosePasswordView() {
 }
 
 async function loadData() {
-  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes] = await Promise.all([
+  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts] = await Promise.all([
     supabase.from('staff_members').select('*').eq('user_id', state.user.id).single(),
     supabase.from('staff_members').select('user_id,full_name'),
     supabase.from('students').select('*').order('student_number', { ascending: false }),
@@ -313,9 +337,10 @@ async function loadData() {
     supabase.from('formations').select('*').order('name'),
     supabase.from('payments').select('*').order('paid_at', { ascending: false }),
     supabase.from('payment_audit_log').select('*').order('occurred_at', { ascending: false }),
-    supabase.from('intakes').select('*').order('start_date', { ascending: false })
+    supabase.from('intakes').select('*').order('start_date', { ascending: false }),
+    loadAllWhatsappContacts()
   ])
-  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes].find(x => x.error)?.error
+  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts].find(x => x.error)?.error
   if (firstError) throw firstError
   state.staff = staff.data
   state.staffDirectory = staffDirectory.data
@@ -326,6 +351,7 @@ async function loadData() {
   state.payments = payments.data
   state.paymentAudit = paymentAudit.data
   state.intakes = intakes.data
+  state.whatsappContacts = whatsappContacts.data || []
   if (!selectedIntake()) state.intakeFilter = state.intakes.find(x => x.active)?.id || state.intakes[0]?.id || null
 }
 
@@ -365,6 +391,7 @@ function shellView() {
           <button data-section="dashboard"><span>▦ &nbsp;Tableau de bord</span></button>
           <button data-section="students"><span>♙ &nbsp;Étudiants</span></button>
           <button data-section="payments"><span>₣ &nbsp;Paiements</span></button>
+          <button data-section="whatsapp"><span>◌ &nbsp;WhatsApp</span></button>
           <button data-section="formations"><span>◫ &nbsp;Formations</span></button>
           <button data-section="intakes"><span>◉ &nbsp;Vagues</span></button>
         </nav>
@@ -394,6 +421,7 @@ function shellView() {
         </section>
         <section id="students" class="section">${safeSectionContent(() => studentPanel('Tous les étudiants', scopedStudents(), true))}</section>
         <section id="payments" class="section">${safeSectionContent(paymentPanel)}</section>
+        <section id="whatsapp" class="section">${safeSectionContent(whatsappPanel)}</section>
         <section id="formations" class="section">${safeSectionContent(formationPanel)}</section>
         <section id="intakes" class="section">${safeSectionContent(intakePanel)}</section>
       </main>
@@ -590,6 +618,270 @@ function pendingPaymentPanel() {
   return `<div class="panel pending-panel"><div class="panel-head"><div><h2>Paiements en attente d’affectation</h2><p class="muted">Ces montants sont encaissés, mais ne comptent dans aucune vague tant que l’élève n’y est pas affecté.</p></div><button id="add-pending-payment" class="primary desktop-only">+ Paiement en attente</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Personne</th><th>Formation</th><th>Montant</th><th>Bourse</th><th></th></tr></thead><tbody>${rows}</tbody></table>${rows ? '' : '<div class="empty">Aucun paiement en attente.</div>'}</div></div>`
 }
 
+const whatsappFilterOptions = [
+  ['all', 'Tous les contacts'],
+  ['ont_repondu', 'Ont répondu'],
+  ['beva_doit_repondre', 'BEVA doit répondre'],
+  ['en_attente_du_contact', 'En attente du contact'],
+  ['sans_reponse', 'Sans réponse'],
+  ['jamais_traite', 'Jamais traité'],
+  ['a_verifier', 'À vérifier'],
+  ['inscriptions', 'Inscriptions Flow'],
+  ['paiements', 'Paiements à vérifier'],
+  ['aujourdhui', 'Nouvelles aujourd’hui']
+]
+
+const commercialOptions = [
+  ['a_qualifier', 'À qualifier'],
+  ['interesse', 'Intéressé'],
+  ['a_relancer', 'À relancer'],
+  ['visite_prevue', 'Visite prévue'],
+  ['inscription_en_cours', 'Inscription en cours'],
+  ['inscrit', 'Inscrit'],
+  ['non_interesse', 'Non intéressé']
+]
+
+const attentionOptions = [
+  ['', 'Aucune action spéciale'],
+  ['conseiller', 'Conseiller demandé'],
+  ['appel_demande', 'Appel demandé'],
+  ['message_demande', 'Réponse écrite demandée'],
+  ['justificatif_paiement', 'Paiement à vérifier'],
+  ['inscription', 'Inscription à traiter'],
+  ['question_libre', 'Question libre']
+]
+
+function whatsappCounts() {
+  const contacts = state.whatsappContacts
+  const count = test => contacts.filter(test).length
+  return {
+    all: contacts.length,
+    ont_repondu: count(contact => contact.statut_whatsapp === 'ont_repondu'),
+    beva_doit_repondre: count(contact => contact.suivi_reponse === 'beva_doit_repondre'),
+    en_attente_du_contact: count(contact => contact.suivi_reponse === 'en_attente_du_contact'),
+    sans_reponse: count(contact => contact.statut_whatsapp === 'sans_reponse'),
+    jamais_traite: count(contact => contact.statut_whatsapp === 'jamais_traite'),
+    a_verifier: count(contact => contact.statut_whatsapp === 'a_verifier'),
+    inscriptions: count(contact => Boolean(contact.last_submission_id)),
+    paiements: count(contact => contact.attention_reason === 'justificatif_paiement'),
+    aujourdhui: count(contact => localDay(contact.first_seen_at) === localDay(new Date()))
+  }
+}
+
+function whatsappMatchesFilter(contact, filter) {
+  if (filter === 'all') return true
+  if (filter === 'beva_doit_repondre' || filter === 'en_attente_du_contact') return contact.suivi_reponse === filter
+  if (filter === 'inscriptions') return Boolean(contact.last_submission_id)
+  if (filter === 'paiements') return contact.attention_reason === 'justificatif_paiement'
+  if (filter === 'aujourdhui') return localDay(contact.first_seen_at) === localDay(new Date())
+  return contact.statut_whatsapp === filter
+}
+
+function filteredWhatsappContacts() {
+  const query = state.whatsappSearch.trim().toLocaleLowerCase('fr')
+  return state.whatsappContacts.filter(contact => {
+    if (!whatsappMatchesFilter(contact, state.whatsappFilter)) return false
+    if (state.whatsappAssignee !== 'all' && (state.whatsappAssignee === 'none' ? contact.assigned_to : contact.assigned_to !== state.whatsappAssignee)) return false
+    if (state.whatsappCommercial !== 'all' && contact.commercial_status !== state.whatsappCommercial) return false
+    if (!query) return true
+    return [whatsappName(contact), contact.phone, contact.wa_id, contact.last_message_body, ...(contact.registration_formations || [])]
+      .some(value => String(value || '').toLocaleLowerCase('fr').includes(query))
+  })
+}
+
+function paginatedWhatsappContacts(contacts) {
+  const totalPages = Math.max(1, Math.ceil(contacts.length / state.whatsappPageSize))
+  state.whatsappPage = Math.min(Math.max(1, state.whatsappPage), totalPages)
+  const start = (state.whatsappPage - 1) * state.whatsappPageSize
+  return { rows: contacts.slice(start, start + state.whatsappPageSize), totalPages, start }
+}
+
+function whatsappSituation(contact) {
+  if (contact.statut_whatsapp === 'ont_repondu' && contact.suivi_reponse) return whatsappFollowUpLabel(contact.suivi_reponse)
+  return whatsappStatusLabel(contact.statut_whatsapp)
+}
+
+function whatsappSituationClass(contact) {
+  if (contact.suivi_reponse === 'beva_doit_repondre' || contact.statut_whatsapp === 'jamais_traite') return 'due'
+  if (contact.statut_whatsapp === 'a_verifier' || contact.statut_whatsapp === 'sans_reponse') return 'warning'
+  return 'ok'
+}
+
+function whatsappLastMessage(contact) {
+  const body = String(contact.last_message_body || '').trim()
+  if (body) return body.length > 90 ? `${body.slice(0, 87)}…` : body
+  return contact.last_message_type ? `[${String(contact.last_message_type).replaceAll('_', ' ')}]` : 'Aucun texte disponible'
+}
+
+function whatsappRows(contacts) {
+  return contacts.map(contact => `<tr>
+    <td><strong>${esc(whatsappName(contact))}</strong>${contact.attention_reason ? `<small class="wa-attention">${esc(attentionReasonLabel(contact.attention_reason))}</small>` : ''}</td>
+    <td><span class="code">${esc(contact.phone || contact.wa_id || '—')}</span></td>
+    <td><span class="badge ${whatsappSituationClass(contact)}">${esc(whatsappSituation(contact))}</span></td>
+    <td><span class="badge">${esc(commercialStatusLabel(contact.commercial_status))}</span></td>
+    <td>${esc(whatsappStaffName(contact.assigned_to))}</td>
+    <td class="wa-message-cell"><small>${contact.last_message_direction === 'inbound' ? 'Contact' : 'BEVA'} · ${dateTime(contact.last_message_at)}</small><span>${esc(whatsappLastMessage(contact))}</span></td>
+    <td>${contact.next_follow_up_at ? dateTime(contact.next_follow_up_at) : '—'}</td>
+    <td class="row-actions"><button class="link-btn open-wa-contact" data-id="${contact.id}">Détails</button><a class="secondary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">WhatsApp</a></td>
+  </tr>`).join('')
+}
+
+function whatsappMobileCards(contacts) {
+  return contacts.map(contact => {
+    const detailId = `wa-mobile-${contact.id}`
+    return `<article class="wa-mobile-card"><button class="wa-mobile-toggle" type="button" data-mobile-detail="${detailId}" aria-expanded="false"><span class="wa-mobile-mark">WA</span><span class="wa-mobile-identity"><strong>${esc(whatsappName(contact))}</strong><small>${esc(contact.phone || contact.wa_id || '—')}</small></span><span class="badge ${whatsappSituationClass(contact)}">${esc(whatsappSituation(contact))}</span></button><div class="wa-mobile-detail" id="${detailId}"><div class="mobile-detail-grid"><div><span>Dernier message</span><strong>${esc(whatsappLastMessage(contact))}</strong></div><div><span>Activité</span><strong>${dateTime(contact.last_message_at)}</strong></div><div><span>Qualification</span><strong>${esc(commercialStatusLabel(contact.commercial_status))}</strong></div><div><span>Responsable</span><strong>${esc(whatsappStaffName(contact.assigned_to))}</strong></div></div>${contact.attention_reason ? `<p class="wa-mobile-alert">${esc(attentionReasonLabel(contact.attention_reason))}</p>` : ''}<div class="mobile-detail-actions"><button class="primary open-wa-contact" data-id="${contact.id}">Voir le dossier</button><a class="secondary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">Ouvrir WhatsApp</a></div></div></article>`
+  }).join('')
+}
+
+function whatsappSummaryCard(filter, label, value, detail = '') {
+  return `<button class="wa-stat-card ${state.whatsappFilter === filter ? 'active' : ''}" type="button" data-wa-filter="${filter}"><span>${esc(label)}</span><strong>${value}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</button>`
+}
+
+function whatsappPanel() {
+  const counts = whatsappCounts()
+  const contacts = filteredWhatsappContacts()
+  const page = paginatedWhatsappContacts(contacts)
+  const options = whatsappFilterOptions.map(([value, label]) => `<option value="${value}" ${state.whatsappFilter === value ? 'selected' : ''}>${esc(label)}</option>`).join('')
+  const staffOptions = state.staffDirectory.map(member => `<option value="${member.user_id}" ${state.whatsappAssignee === member.user_id ? 'selected' : ''}>${esc(member.full_name)}</option>`).join('')
+  const commercial = commercialOptions.map(([value, label]) => `<option value="${value}" ${state.whatsappCommercial === value ? 'selected' : ''}>${esc(label)}</option>`).join('')
+  return `<div class="wa-dashboard">
+    <div class="wa-cards">
+      ${whatsappSummaryCard('all', 'Tous les contacts', counts.all)}
+      ${whatsappSummaryCard('ont_repondu', 'Ont répondu', counts.ont_repondu, `${counts.beva_doit_repondre} à répondre · ${counts.en_attente_du_contact} en attente`)}
+      ${whatsappSummaryCard('beva_doit_repondre', 'BEVA doit répondre', counts.beva_doit_repondre)}
+      ${whatsappSummaryCard('en_attente_du_contact', 'En attente du contact', counts.en_attente_du_contact)}
+      ${whatsappSummaryCard('inscriptions', 'Inscriptions Flow', counts.inscriptions)}
+      ${whatsappSummaryCard('paiements', 'Paiements à vérifier', counts.paiements)}
+      ${whatsappSummaryCard('aujourdhui', 'Nouvelles aujourd’hui', counts.aujourdhui)}
+      ${whatsappSummaryCard('a_verifier', 'À vérifier', counts.a_verifier)}
+    </div>
+    <div class="wa-logic-note"><strong>Lecture automatique :</strong> « Ont répondu » regroupe les échanges réels. Si le contact a écrit en dernier, il passe dans « BEVA doit répondre ». Si BEVA a écrit en dernier, il passe dans « En attente du contact ».</div>
+    <section class="panel wa-panel"><div class="panel-head"><div><h2>Suivi des conversations WhatsApp</h2><p class="muted">${contacts.length} contact${contacts.length > 1 ? 's' : ''} trouvé${contacts.length > 1 ? 's' : ''} sur ${counts.all} · Page ${state.whatsappPage}/${page.totalPages}</p></div><div class="wa-panel-actions"><button id="refresh-whatsapp" class="secondary" type="button">Actualiser</button><button id="export-whatsapp" class="secondary" type="button">Exporter en Excel</button></div></div>
+      <div class="wa-filters"><label>Recherche<input id="wa-search" value="${esc(state.whatsappSearch)}" placeholder="Nom, numéro, formation ou message"></label><label>Situation<select id="wa-filter">${options}</select></label><label>Responsable<select id="wa-assignee"><option value="all">Tous</option><option value="none" ${state.whatsappAssignee === 'none' ? 'selected' : ''}>Non affectés</option>${staffOptions}</select></label><label>Qualification<select id="wa-commercial"><option value="all">Toutes</option>${commercial}</select></label></div>
+      <div class="wa-mobile-list">${whatsappMobileCards(page.rows) || '<div class="empty">Aucun contact pour ces filtres.</div>'}</div>
+      <div class="table-wrap wa-desktop-table"><table><thead><tr><th>Contact</th><th>Numéro</th><th>Situation</th><th>Qualification</th><th>Responsable</th><th>Dernier message</th><th>Prochaine relance</th><th></th></tr></thead><tbody>${whatsappRows(page.rows)}</tbody></table>${contacts.length ? '' : '<div class="empty">Aucun contact pour ces filtres.</div>'}</div>
+      ${contacts.length > state.whatsappPageSize ? `<nav class="wa-pagination" aria-label="Pages des contacts"><button class="secondary" type="button" data-wa-page="${state.whatsappPage - 1}" ${state.whatsappPage === 1 ? 'disabled' : ''}>Précédent</button><span>${page.start + 1}–${Math.min(page.start + state.whatsappPageSize, contacts.length)} sur ${contacts.length}</span><button class="secondary" type="button" data-wa-page="${state.whatsappPage + 1}" ${state.whatsappPage === page.totalPages ? 'disabled' : ''}>Suivant</button></nav>` : ''}
+    </section>
+  </div>`
+}
+
+function renderWhatsappSection() {
+  const section = document.querySelector('#whatsapp')
+  if (!section) return
+  section.innerHTML = safeSectionContent(whatsappPanel)
+  bindWhatsappControls()
+}
+
+function bindWhatsappControls() {
+  const section = document.querySelector('#whatsapp')
+  if (!section) return
+  section.querySelectorAll('[data-wa-filter]').forEach(button => button.addEventListener('click', () => {
+    state.whatsappFilter = button.dataset.waFilter
+    state.whatsappPage = 1
+    renderWhatsappSection()
+  }))
+  section.querySelector('#wa-search')?.addEventListener('input', event => {
+    state.whatsappSearch = event.target.value
+    state.whatsappPage = 1
+    renderWhatsappSection()
+    const input = document.querySelector('#wa-search')
+    input?.focus()
+    input?.setSelectionRange(input.value.length, input.value.length)
+  })
+  section.querySelector('#wa-filter')?.addEventListener('change', event => { state.whatsappFilter = event.target.value; state.whatsappPage = 1; renderWhatsappSection() })
+  section.querySelector('#wa-assignee')?.addEventListener('change', event => { state.whatsappAssignee = event.target.value; state.whatsappPage = 1; renderWhatsappSection() })
+  section.querySelector('#wa-commercial')?.addEventListener('change', event => { state.whatsappCommercial = event.target.value; state.whatsappPage = 1; renderWhatsappSection() })
+  section.querySelectorAll('[data-wa-page]').forEach(button => button.addEventListener('click', () => { state.whatsappPage = Number(button.dataset.waPage); renderWhatsappSection() }))
+  section.querySelector('#refresh-whatsapp')?.addEventListener('click', () => refresh('Données WhatsApp actualisées.'))
+  section.querySelector('#export-whatsapp')?.addEventListener('click', event => runWhatsappExport(event.currentTarget))
+  bindWhatsappContactButtons(section)
+}
+
+function bindWhatsappContactButtons(root = document) {
+  root.querySelectorAll('.open-wa-contact').forEach(button => button.addEventListener('click', () => whatsappContactModal(button.dataset.id)))
+}
+
+async function runWhatsappExport(button) {
+  const originalText = button.textContent
+  button.disabled = true
+  button.textContent = 'Préparation…'
+  try {
+    await downloadWhatsAppContactsExcel(state, filteredWhatsappContacts())
+    toast('Suivi WhatsApp exporté en Excel.')
+  } catch (error) {
+    console.error('Erreur export WhatsApp', error)
+    toast(`L’export a échoué : ${error?.message || 'erreur inconnue'}`, true)
+  } finally {
+    button.disabled = false
+    button.textContent = originalText
+  }
+}
+
+const dateTimeInputValue = value => {
+  if (!value) return ''
+  const date = new Date(value)
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset())
+  return date.toISOString().slice(0, 16)
+}
+
+async function whatsappContactModal(contactId) {
+  const contact = state.whatsappContacts.find(item => item.id === contactId)
+  if (!contact) return toast('Contact WhatsApp introuvable.', true)
+  const backdrop = showModal(`Suivi WhatsApp — ${esc(whatsappName(contact))}`, '<div class="empty">Chargement de la conversation…</div>')
+  const body = backdrop.querySelector('.modal-body')
+  const [messagesResult, submissionsResult] = await Promise.all([
+    supabase.from('wa_messages').select('id,direction,message_type,body,delivery_status,occurred_at').eq('contact_id', contactId).order('occurred_at', { ascending: false }).limit(100),
+    supabase.from('wa_flow_submissions').select('id,nom_complet,telephone,formations,mode_cours,horaire,date_passage,submitted_at').eq('contact_id', contactId).order('submitted_at', { ascending: false }).limit(10)
+  ])
+  if (messagesResult.error || submissionsResult.error) {
+    body.innerHTML = `<p class="error">Impossible de charger le dossier : ${esc((messagesResult.error || submissionsResult.error).message)}</p>`
+    return
+  }
+  const messages = (messagesResult.data || []).slice().reverse()
+  const submissions = submissionsResult.data || []
+  const messageMarkup = messages.map(message => `<article class="wa-bubble ${message.direction}"><div><strong>${message.direction === 'inbound' ? 'Contact' : 'BEVA'}</strong><small>${dateTime(message.occurred_at)}</small></div><p>${esc(message.body || `[${String(message.message_type || 'message').replaceAll('_', ' ')}]`)}</p>${message.delivery_status ? `<span>${esc(message.delivery_status)}</span>` : ''}</article>`).join('')
+  const submissionMarkup = submissions.map(submission => `<article class="wa-registration"><div><strong>${esc(submission.nom_complet || whatsappName(contact))}</strong><small>${dateTime(submission.submitted_at)}</small></div><p><b>Formation(s) :</b> ${esc((submission.formations || []).join(', ') || 'Non précisée')}</p><p><b>Mode :</b> ${esc(submission.mode_cours || 'Non précisé')} · <b>Horaire :</b> ${esc(submission.horaire || 'Non précisé')}</p><p><b>Passage prévu :</b> ${esc(submission.date_passage || 'Non précisé')}</p></article>`).join('')
+  const staffOptions = state.staffDirectory.map(member => `<option value="${member.user_id}" ${contact.assigned_to === member.user_id ? 'selected' : ''}>${esc(member.full_name)}</option>`).join('')
+  const commercial = commercialOptions.map(([value, label]) => `<option value="${value}" ${contact.commercial_status === value ? 'selected' : ''}>${esc(label)}</option>`).join('')
+  const attention = attentionOptions.map(([value, label]) => `<option value="${value}" ${String(contact.attention_reason || '') === value ? 'selected' : ''}>${esc(label)}</option>`).join('')
+  body.innerHTML = `<div class="wa-contact-overview"><div><span>Numéro</span><strong>${esc(contact.phone || contact.wa_id || '—')}</strong></div><div><span>Situation automatique</span><strong>${esc(whatsappSituation(contact))}</strong></div><div><span>Premier contact</span><strong>${dateTime(contact.first_seen_at)}</strong></div><div><span>Dernière activité</span><strong>${dateTime(contact.last_message_at)}</strong></div></div>
+    <div class="wa-modal-actions"><a class="primary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">Ouvrir dans WhatsApp</a></div>
+    <form id="wa-follow-up-form" class="wa-follow-up-form"><div class="grid-2"><label>Qualification<select name="commercial_status">${commercial}</select></label><label>Responsable<select name="assigned_to"><option value="">Non affecté</option>${staffOptions}</select></label><label>Suivi de la réponse<select name="suivi_reponse"><option value="beva_doit_repondre" ${contact.suivi_reponse === 'beva_doit_repondre' ? 'selected' : ''}>BEVA doit répondre</option><option value="en_attente_du_contact" ${contact.suivi_reponse === 'en_attente_du_contact' ? 'selected' : ''}>En attente du contact</option></select></label><label>Action spéciale<select name="attention_reason">${attention}</select></label><label>Prochaine relance<input name="next_follow_up_at" type="datetime-local" value="${dateTimeInputValue(contact.next_follow_up_at)}"></label></div><label>Note interne<textarea name="internal_note" rows="4" maxlength="4000" placeholder="Informations utiles pour le prochain membre de l’équipe">${esc(contact.internal_note || '')}</textarea></label><p class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Fermer</button><button type="submit" class="primary">Enregistrer le suivi</button></div></form>
+    <section class="wa-modal-section"><h3>Inscriptions reçues par le Flow</h3>${submissionMarkup || '<div class="empty">Aucune inscription Flow pour ce contact.</div>'}</section>
+    <section class="wa-modal-section"><h3>Historique des messages</h3><div class="wa-conversation">${messageMarkup || '<div class="empty">Aucun message enregistré.</div>'}</div></section>`
+  body.querySelector('.cancel').addEventListener('click', () => backdrop.remove())
+  body.querySelector('#wa-follow-up-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const submit = form.querySelector('button[type="submit"]')
+    const error = form.querySelector('.error')
+    const data = new FormData(form)
+    submit.disabled = true
+    submit.textContent = 'Enregistrement…'
+    error.textContent = ''
+    const suivi = String(data.get('suivi_reponse') || '')
+    const { error: updateError } = await supabase.from('wa_contacts').update({
+      statut_whatsapp: 'ont_repondu',
+      suivi_reponse: suivi,
+      commercial_status: data.get('commercial_status'),
+      assigned_to: data.get('assigned_to') || null,
+      attention_reason: data.get('attention_reason') || null,
+      next_follow_up_at: data.get('next_follow_up_at') ? new Date(data.get('next_follow_up_at')).toISOString() : null,
+      internal_note: String(data.get('internal_note') || '').trim() || null,
+      last_reviewed_at: new Date().toISOString(),
+      last_reviewed_by: state.user.id
+    }).eq('id', contactId)
+    if (updateError) {
+      error.textContent = updateError.message
+      submit.disabled = false
+      submit.textContent = 'Enregistrer le suivi'
+      return
+    }
+    backdrop.remove()
+    await refresh('Suivi WhatsApp enregistré.')
+  })
+}
+
 function formationPanel() {
   const rows = state.formations.map(item => `<tr><td><strong>${esc(item.name)}</strong></td><td>${money(item.standard_fee)}</td><td>${money(item.scholarship_fee)}</td>
     <td>${item.duration_months ? item.duration_months + ' mois' : '—'}</td><td><span class="badge ${item.active ? 'ok' : ''}">${item.active ? 'Active' : 'Inactive'}</span></td></tr>`).join('')
@@ -615,6 +907,7 @@ function intakePanel() {
 
 function bindShell() {
   bindMobileDisclosures()
+  bindWhatsappControls()
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
@@ -773,10 +1066,12 @@ function switchSection(section) {
   state.section = section
   document.querySelectorAll('.section').forEach(el => el.classList.toggle('active', el.id === section))
   document.querySelectorAll('[data-section]').forEach(el => el.classList.toggle('active', el.dataset.section === section))
-  const titles = { dashboard: 'Tableau de bord', students: 'Étudiants', payments: 'Paiements', formations: 'Formations', intakes: 'Vagues de formation' }
+  const titles = { dashboard: 'Tableau de bord', students: 'Étudiants', payments: 'Paiements', whatsapp: 'Suivi WhatsApp', formations: 'Formations', intakes: 'Vagues de formation' }
   document.querySelector('#page-title').textContent = titles[section]
   const intake = selectedIntake()
-  document.querySelector('#page-subtitle').textContent = intake ? `Suivi de ${intake.name}` : 'Vue générale de l’activité BEVA'
+  document.querySelector('#page-subtitle').textContent = section === 'whatsapp' ? 'Conversations, inscriptions et actions de suivi' : intake ? `Suivi de ${intake.name}` : 'Vue générale de l’activité BEVA'
+  document.querySelector('#intake-filter')?.classList.toggle('hidden', section === 'whatsapp')
+  document.querySelector('#add-student-top')?.classList.toggle('hidden', section === 'whatsapp')
 }
 
 function showModal(title, body) {
