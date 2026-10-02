@@ -375,6 +375,57 @@ async function downloadWorkbook(workbook) {
   return workbook.fileName
 }
 
+const whatsappStatusLabel = status => ({ ont_repondu: 'Ont répondu', sans_reponse: 'Sans réponse', jamais_traite: 'Jamais traité', a_verifier: 'À vérifier' }[status] || status || 'À vérifier')
+const whatsappFollowUpLabel = status => ({ en_attente_du_contact: 'En attente du contact', beva_doit_repondre: 'BEVA doit répondre' }[status] || '')
+const commercialStatusLabel = status => ({ a_qualifier: 'À qualifier', interesse: 'Intéressé', a_relancer: 'À relancer', visite_prevue: 'Visite prévue', inscription_en_cours: 'Inscription en cours', inscrit: 'Inscrit', non_interesse: 'Non intéressé' }[status] || status || 'À qualifier')
+const attentionReasonLabel = reason => ({ conseiller: 'Conseiller demandé', appel_demande: 'Appel demandé', message_demande: 'Réponse écrite demandée', justificatif_paiement: 'Paiement à vérifier', inscription: 'Inscription à traiter', question_libre: 'Question libre' }[reason] || '')
+
+export function buildWhatsAppWorkbookSheets(state, contacts = state.whatsappContacts || []) {
+  const situation = contact => contact.statut_whatsapp === 'ont_repondu' && contact.suivi_reponse
+    ? whatsappFollowUpLabel(contact.suivi_reponse)
+    : whatsappStatusLabel(contact.statut_whatsapp)
+  const count = test => contacts.filter(test).length
+  const subtitle = `Export du ${exportDateLabel()} · ${contacts.length} contact(s) selon les filtres actifs`
+  const summaryRows = [
+    ['Contacts exportés', numberCell(contacts.length)],
+    ['Ont répondu', numberCell(count(contact => contact.statut_whatsapp === 'ont_repondu'))],
+    ['BEVA doit répondre', numberCell(count(contact => contact.suivi_reponse === 'beva_doit_repondre'))],
+    ['En attente du contact', numberCell(count(contact => contact.suivi_reponse === 'en_attente_du_contact'))],
+    ['Sans réponse', numberCell(count(contact => contact.statut_whatsapp === 'sans_reponse'))],
+    ['Jamais traité', numberCell(count(contact => contact.statut_whatsapp === 'jamais_traite'))],
+    ['À vérifier', numberCell(count(contact => contact.statut_whatsapp === 'a_verifier'))],
+    ['Inscriptions Flow', numberCell(count(contact => Boolean(contact.last_submission_id)))],
+    ['Paiements à vérifier', numberCell(count(contact => contact.attention_reason === 'justificatif_paiement'))]
+  ]
+  const rows = contacts.map(contact => [
+    contact.registration_name || contact.profile_name || '',
+    textCell(contact.phone || contact.wa_id),
+    situation(contact),
+    commercialStatusLabel(contact.commercial_status),
+    staffName(state.staffDirectory || [], contact.assigned_to),
+    attentionReasonLabel(contact.attention_reason),
+    dateCell(contact.first_seen_at, true),
+    dateCell(contact.last_message_at, true),
+    contact.last_message_direction === 'inbound' ? 'Contact' : contact.last_message_direction === 'outbound' ? 'BEVA' : '',
+    contact.last_message_body || (contact.last_message_type ? `[${contact.last_message_type}]` : ''),
+    dateCell(contact.next_follow_up_at, true),
+    (contact.registration_formations || []).join(', '),
+    contact.registration_mode || '',
+    contact.registration_schedule || '',
+    contact.registration_visit_date || '',
+    dateCell(contact.registration_submitted_at, true),
+    contact.internal_note || ''
+  ])
+  return {
+    fileName: `BEVA_Suivi_WhatsApp_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    sheets: [
+      makeSheet({ sheet: 'Synthèse', title: 'BEVA — Synthèse du suivi WhatsApp', subtitle, headers: ['Indicateur', 'Nombre'], widths: [34, 16], rows: summaryRows, zoomScale: 1 }),
+      makeSheet({ sheet: 'Contacts', title: 'BEVA — Contacts WhatsApp', subtitle, headers: ['Nom', 'Numéro WhatsApp', 'Situation', 'Qualification', 'Responsable', 'Action spéciale', 'Premier contact', 'Dernière activité', 'Dernier auteur', 'Dernier message', 'Prochaine relance', 'Formation(s)', 'Mode', 'Horaire', 'Date de passage', 'Inscription Flow', 'Note interne'], widths: [24, 18, 24, 22, 24, 25, 20, 20, 15, 45, 20, 35, 16, 20, 20, 20, 40], rows, zoomScale: 0.7 })
+    ]
+  }
+}
+
 export const downloadStudentsExcel = (state, intakeId) => downloadWorkbook(buildStudentWorkbookSheets(state, intakeId))
 export const downloadStudentsByFormationExcel = (state, intakeId, formationId) => downloadWorkbook(buildFormationStudentWorkbookSheets(state, intakeId, formationId))
 export const downloadPaymentsExcel = (state, intakeId) => downloadWorkbook(buildPaymentWorkbookSheets(state, intakeId))
+export const downloadWhatsAppContactsExcel = (state, contacts) => downloadWorkbook(buildWhatsAppWorkbookSheets(state, contacts))
