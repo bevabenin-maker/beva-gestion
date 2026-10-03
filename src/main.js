@@ -391,9 +391,11 @@ function shellView() {
           <button data-section="dashboard"><span>▦ &nbsp;Tableau de bord</span></button>
           <button data-section="students"><span>♙ &nbsp;Étudiants</span></button>
           <button data-section="payments"><span>₣ &nbsp;Paiements</span></button>
-          <button data-section="whatsapp"><span>◌ &nbsp;WhatsApp</span></button>
           <button data-section="formations"><span>◫ &nbsp;Formations</span></button>
           <button data-section="intakes"><span>◉ &nbsp;Vagues</span></button>
+          <button data-section="whatsapp" class="nav-whatsapp">
+            <span class="nav-whatsapp-content"><span class="nav-whatsapp-icon" aria-hidden="true">WA</span><span class="nav-whatsapp-text">WhatsApp</span></span>
+          </button>
         </nav>
         <div class="sidebar-bottom">
           <p class="staff-name">${esc(state.staff.full_name)}</p>
