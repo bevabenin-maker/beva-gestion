@@ -94,6 +94,48 @@ input:focus, select:focus, textarea:focus { border-color: #1b5faa; box-shadow: 0
   font-weight: 700;
 }
 .nav button.active, .nav button:hover { color: white; background: #123760; }
+.nav button.nav-whatsapp {
+  position: relative;
+  margin-top: 11px;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .2);
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  box-shadow: 0 9px 22px rgba(18, 140, 74, .28);
+}
+.nav button.nav-whatsapp::after {
+  position: absolute;
+  top: -26px;
+  right: -21px;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .12);
+  content: '';
+}
+.nav button.nav-whatsapp:hover,
+.nav button.nav-whatsapp.active {
+  color: #fff;
+  background: linear-gradient(135deg, #20c75d 0%, #0d713d 100%);
+  box-shadow: 0 11px 26px rgba(18, 140, 74, .38);
+  transform: translateY(-1px);
+}
+.nav-whatsapp-content { display: flex; align-items: center; gap: 10px; }
+.nav-whatsapp-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 29px;
+  width: 29px;
+  height: 29px;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, .12);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: -.2px;
+}
+.nav-whatsapp-text { font-weight: 900; letter-spacing: .1px; }
 .sidebar-bottom { position: absolute; right: 18px; bottom: 22px; left: 18px; }
 .staff-name { margin: 0 0 4px; font-weight: 800; }
 .staff-role { margin: 0 0 13px; color: #9eb3cf; font-size: 13px; text-transform: capitalize; }
@@ -301,6 +343,10 @@ td { font-size: 14px; }
   .sidebar .logo strong, .sidebar .logo small, .nav span, .staff-name, .staff-role { display: none; }
   .sidebar .logo { margin-inline: 7px; }
   .nav button { text-align: center; }
+  .nav button.nav-whatsapp { padding-inline: 8px; }
+  .nav .nav-whatsapp-content { display: flex; justify-content: center; }
+  .nav .nav-whatsapp-icon { display: grid; }
+  .nav .nav-whatsapp-text { display: none; }
 }
 @media (max-width: 720px) {
   .login-page { grid-template-columns: 1fr; }
@@ -312,6 +358,10 @@ td { font-size: 14px; }
   .nav { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .nav button { min-height: 54px; padding: 7px 4px; border-radius: 11px; font-size: 11px; line-height: 1.2; text-align: center; }
   .nav span { display: block; }
+  .nav button.nav-whatsapp { margin-top: 0; padding: 5px 3px; box-shadow: 0 5px 14px rgba(18, 140, 74, .32); }
+  .nav .nav-whatsapp-content { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+  .nav .nav-whatsapp-icon { display: grid; width: 25px; height: 25px; flex-basis: 25px; margin: 0 auto; font-size: 7px; }
+  .nav .nav-whatsapp-text { display: block; }
   .nav button[data-section="formations"], .nav button[data-section="intakes"] { display: none; }
   .main { padding: 14px 8px calc(96px + env(safe-area-inset-bottom)); }
   /* Phone view is a read-only dashboard first: the key figures are large,
