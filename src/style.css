@@ -329,6 +329,7 @@ td { font-size: 14px; }
 .wa-modal-actions { display: flex; justify-content: flex-end; margin: 12px 0 18px; }
 .wa-follow-up-form { display: grid; gap: 15px; padding: 17px; border: 1px solid #d8e5f3; border-radius: 14px; background: #f8fbff; }
 .wa-follow-up-form .modal-actions { margin-top: 0; }
+.wa-human-pause { margin: 0; padding: 12px 14px; border: 1px solid #f0c36a; border-radius: 10px; background: #fff8e7; color: #6f4b00; }
 .wa-modal-section { margin-top: 22px; }
 .wa-modal-section h3 { margin: 0 0 12px; color: #123b69; }
 .wa-registration { padding: 14px; border: 1px solid #ead9a3; border-radius: 12px; background: #fffbef; }
