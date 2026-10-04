@@ -123,7 +123,7 @@ values
    'Pour payer avec MTN MoMoPay, le code complet est *880*41*226927*montant#. Le nom affiché doit être CHADO 229. Après paiement, le contact envoie le justificatif dans WhatsApp. Seul un membre de BEVA peut vérifier et confirmer le paiement et l’inscription.',
    array['paiement','payer','momo','momopay','mobile money','justificatif','reçu','capture'], 100),
   ('visite_contact', 'institution', 'Adresse et visite',
-   'BEVA peut recevoir les visiteurs du lundi au samedi, de 9 h à 21 h. Adresse : Atrokpocodji, ancien impôt, première rue à droite, Abomey-Calavi. Localisation : https://maps.app.goo.gl/x1sx7LD96iJitBQz5. Pour une demande de visite, un membre confirme le jour et l’heure dans WhatsApp.',
+   'BEVA peut recevoir les visiteurs du lundi au samedi, de 10 h à 21 h. Adresse : Atrokpocodji, ancien impôt, première rue à droite, Abomey-Calavi. Localisation : https://maps.app.goo.gl/x1sx7LD96iJitBQz5. Pour une demande de visite, un membre confirme le jour et l’heure dans WhatsApp.',
    array['adresse','localisation','visite','venir','itinéraire','Atrokpocodji','Abomey-Calavi'], 85),
   ('certificat', 'institution', 'Certificat',
    'Le certificat remis est un certificat interne de BEVA. Il ne faut pas le présenter comme un diplôme reconnu par l’État.',
