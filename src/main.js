@@ -11,9 +11,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], whatsappContacts: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week', whatsappFilter: 'all', whatsappSearch: '', whatsappAssignee: 'all', whatsappCommercial: 'all', whatsappPage: 1, whatsappPageSize: 50 }
+const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], whatsappContacts: [], whatsappAiUsage: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week', whatsappFilter: 'all', whatsappSearch: '', whatsappAssignee: 'all', whatsappCommercial: 'all', whatsappPage: 1, whatsappPageSize: 50 }
+
+const QWEN_FREE_NEURONS_PER_DAY = 10000
+const QWEN_USD_PER_1000_NEURONS = 0.011
+const ESTIMATED_USD_TO_FCFA = 600
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
+const usd = value => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(Number(value || 0))
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
 // The old IN- prefix is kept in the database for compatibility, but it has no
 // business meaning and is no longer shown to staff or on receipts.
@@ -118,6 +123,16 @@ async function loadAllWhatsappContacts() {
     rows.push(...(result.data || []))
     if ((result.data || []).length < pageSize) return { data: rows, error: null }
   }
+}
+
+async function loadWhatsappAiUsage() {
+  const since = new Date()
+  since.setDate(since.getDate() - 90)
+  return supabase
+    .from('wa_ai_usage_daily')
+    .select('*')
+    .gte('usage_day', since.toISOString().slice(0, 10))
+    .order('usage_day', { ascending: false })
 }
 const auditActionLabel = action => ({ created: 'Versement enregistré', updated: 'Versement modifié', cancelled: 'Versement annulé', deleted: 'Versement supprimé' }[action] || 'Mise à jour')
 const staffName = id => state.staffDirectory.find(x => x.user_id === id)?.full_name || 'Système / ancien enregistrement'
@@ -328,7 +343,7 @@ function choosePasswordView() {
 }
 
 async function loadData() {
-  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts] = await Promise.all([
+  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage] = await Promise.all([
     supabase.from('staff_members').select('*').eq('user_id', state.user.id).single(),
     supabase.from('staff_members').select('user_id,full_name'),
     supabase.from('students').select('*').order('student_number', { ascending: false }),
@@ -338,9 +353,10 @@ async function loadData() {
     supabase.from('payments').select('*').order('paid_at', { ascending: false }),
     supabase.from('payment_audit_log').select('*').order('occurred_at', { ascending: false }),
     supabase.from('intakes').select('*').order('start_date', { ascending: false }),
-    loadAllWhatsappContacts()
+    loadAllWhatsappContacts(),
+    loadWhatsappAiUsage()
   ])
-  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts].find(x => x.error)?.error
+  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage].find(x => x.error)?.error
   if (firstError) throw firstError
   state.staff = staff.data
   state.staffDirectory = staffDirectory.data
@@ -352,6 +368,7 @@ async function loadData() {
   state.paymentAudit = paymentAudit.data
   state.intakes = intakes.data
   state.whatsappContacts = whatsappContacts.data || []
+  state.whatsappAiUsage = whatsappAiUsage.data || []
   if (!selectedIntake()) state.intakeFilter = state.intakes.find(x => x.active)?.id || state.intakes[0]?.id || null
 }
 
@@ -659,8 +676,8 @@ function whatsappCounts() {
   return {
     all: contacts.length,
     ont_repondu: count(contact => contact.statut_whatsapp === 'ont_repondu'),
-    beva_doit_repondre: count(contact => contact.suivi_reponse === 'beva_doit_repondre'),
-    en_attente_du_contact: count(contact => contact.suivi_reponse === 'en_attente_du_contact'),
+    beva_doit_repondre: count(contact => contact.suivi_reponse === 'beva_doit_repondre' || Boolean(contact.attention_reason)),
+    en_attente_du_contact: count(contact => contact.suivi_reponse === 'en_attente_du_contact' && !contact.attention_reason),
     sans_reponse: count(contact => contact.statut_whatsapp === 'sans_reponse'),
     jamais_traite: count(contact => contact.statut_whatsapp === 'jamais_traite'),
     a_verifier: count(contact => contact.statut_whatsapp === 'a_verifier'),
@@ -672,7 +689,8 @@ function whatsappCounts() {
 
 function whatsappMatchesFilter(contact, filter) {
   if (filter === 'all') return true
-  if (filter === 'beva_doit_repondre' || filter === 'en_attente_du_contact') return contact.suivi_reponse === filter
+  if (filter === 'beva_doit_repondre') return contact.suivi_reponse === filter || Boolean(contact.attention_reason)
+  if (filter === 'en_attente_du_contact') return contact.suivi_reponse === filter && !contact.attention_reason
   if (filter === 'inscriptions') return Boolean(contact.last_submission_id)
   if (filter === 'paiements') return contact.attention_reason === 'justificatif_paiement'
   if (filter === 'aujourdhui') return localDay(contact.first_seen_at) === localDay(new Date())
@@ -699,12 +717,13 @@ function paginatedWhatsappContacts(contacts) {
 }
 
 function whatsappSituation(contact) {
+  if (contact.attention_reason) return 'BEVA doit répondre'
   if (contact.statut_whatsapp === 'ont_repondu' && contact.suivi_reponse) return whatsappFollowUpLabel(contact.suivi_reponse)
   return whatsappStatusLabel(contact.statut_whatsapp)
 }
 
 function whatsappSituationClass(contact) {
-  if (contact.suivi_reponse === 'beva_doit_repondre' || contact.statut_whatsapp === 'jamais_traite') return 'due'
+  if (contact.attention_reason || contact.suivi_reponse === 'beva_doit_repondre' || contact.statut_whatsapp === 'jamais_traite') return 'due'
   if (contact.statut_whatsapp === 'a_verifier' || contact.statut_whatsapp === 'sans_reponse') return 'warning'
   return 'ok'
 }
@@ -715,9 +734,18 @@ function whatsappLastMessage(contact) {
   return contact.last_message_type ? `[${String(contact.last_message_type).replaceAll('_', ' ')}]` : 'Aucun texte disponible'
 }
 
+function attentionAgeLabel(contact) {
+  if (!contact.attention_reason || !contact.attention_opened_at) return ''
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(contact.attention_opened_at).getTime()) / 60000))
+  if (minutes < 60) return `depuis ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `depuis ${hours} h`
+  return `depuis ${Math.floor(hours / 24)} j`
+}
+
 function whatsappRows(contacts) {
   return contacts.map(contact => `<tr>
-    <td><strong>${esc(whatsappName(contact))}</strong>${contact.attention_reason ? `<small class="wa-attention">${esc(attentionReasonLabel(contact.attention_reason))}</small>` : ''}</td>
+    <td><strong>${esc(whatsappName(contact))}</strong>${contact.attention_reason ? `<small class="wa-attention">${esc(attentionReasonLabel(contact.attention_reason))} · ${esc(attentionAgeLabel(contact))}</small>` : ''}</td>
     <td><span class="code">${esc(contact.phone || contact.wa_id || '—')}</span></td>
     <td><span class="badge ${whatsappSituationClass(contact)}">${esc(whatsappSituation(contact))}</span></td>
     <td><span class="badge">${esc(commercialStatusLabel(contact.commercial_status))}</span></td>
@@ -731,8 +759,40 @@ function whatsappRows(contacts) {
 function whatsappMobileCards(contacts) {
   return contacts.map(contact => {
     const detailId = `wa-mobile-${contact.id}`
-    return `<article class="wa-mobile-card"><button class="wa-mobile-toggle" type="button" data-mobile-detail="${detailId}" aria-expanded="false"><span class="wa-mobile-mark">WA</span><span class="wa-mobile-identity"><strong>${esc(whatsappName(contact))}</strong><small>${esc(contact.phone || contact.wa_id || '—')}</small></span><span class="badge ${whatsappSituationClass(contact)}">${esc(whatsappSituation(contact))}</span></button><div class="wa-mobile-detail" id="${detailId}"><div class="mobile-detail-grid"><div><span>Dernier message</span><strong>${esc(whatsappLastMessage(contact))}</strong></div><div><span>Activité</span><strong>${dateTime(contact.last_message_at)}</strong></div><div><span>Qualification</span><strong>${esc(commercialStatusLabel(contact.commercial_status))}</strong></div><div><span>Responsable</span><strong>${esc(whatsappStaffName(contact.assigned_to))}</strong></div></div>${contact.attention_reason ? `<p class="wa-mobile-alert">${esc(attentionReasonLabel(contact.attention_reason))}</p>` : ''}<div class="mobile-detail-actions"><button class="primary open-wa-contact" data-id="${contact.id}">Voir le dossier</button><a class="secondary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">Ouvrir WhatsApp</a></div></div></article>`
+    return `<article class="wa-mobile-card"><button class="wa-mobile-toggle" type="button" data-mobile-detail="${detailId}" aria-expanded="false"><span class="wa-mobile-mark">WA</span><span class="wa-mobile-identity"><strong>${esc(whatsappName(contact))}</strong><small>${esc(contact.phone || contact.wa_id || '—')}</small></span><span class="badge ${whatsappSituationClass(contact)}">${esc(whatsappSituation(contact))}</span></button><div class="wa-mobile-detail" id="${detailId}"><div class="mobile-detail-grid"><div><span>Dernier message</span><strong>${esc(whatsappLastMessage(contact))}</strong></div><div><span>Activité</span><strong>${dateTime(contact.last_message_at)}</strong></div><div><span>Qualification</span><strong>${esc(commercialStatusLabel(contact.commercial_status))}</strong></div><div><span>Responsable</span><strong>${esc(whatsappStaffName(contact.assigned_to))}</strong></div></div>${contact.attention_reason ? `<p class="wa-mobile-alert">${esc(attentionReasonLabel(contact.attention_reason))} · ${esc(attentionAgeLabel(contact))}</p>` : ''}<div class="mobile-detail-actions"><button class="primary open-wa-contact" data-id="${contact.id}">Voir le dossier</button><a class="secondary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">Ouvrir WhatsApp</a></div></div></article>`
   }).join('')
+}
+
+function whatsappAiStats() {
+  const currentDay = localDay(new Date())
+  const currentMonth = currentDay.slice(0, 7)
+  const rows = state.whatsappAiUsage || []
+  const aggregate = selected => selected.reduce((result, row) => {
+    const neurons = Number(row.estimated_neurons || 0)
+    result.requests += Number(row.request_count || 0)
+    result.succeeded += Number(row.succeeded_count || 0)
+    result.failed += Number(row.failed_count || 0)
+    result.tokens += Number(row.total_tokens || 0)
+    result.neurons += neurons
+    result.grossUsd += Number(row.total_cost_usd || 0)
+    result.estimatedBilledUsd += Math.max(0, neurons - QWEN_FREE_NEURONS_PER_DAY) / 1000 * QWEN_USD_PER_1000_NEURONS
+    return result
+  }, { requests: 0, succeeded: 0, failed: 0, tokens: 0, neurons: 0, grossUsd: 0, estimatedBilledUsd: 0 })
+  return {
+    today: aggregate(rows.filter(row => row.usage_day === currentDay)),
+    month: aggregate(rows.filter(row => String(row.usage_day || '').startsWith(currentMonth)))
+  }
+}
+
+function whatsappCostPanel() {
+  const stats = whatsappAiStats()
+  const estimatedFcfa = value => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value * ESTIMATED_USD_TO_FCFA)} FCFA`
+  return `<section class="panel wa-cost-panel"><div class="panel-head"><div><h2>Consommation de l’intelligence artificielle</h2><p class="muted">Estimations Qwen calculées à partir des tokens réellement retournés par Cloudflare.</p></div><span class="badge ok">Suivi automatique</span></div><div class="wa-cost-grid">
+    <div><span>Appels IA aujourd’hui</span><strong>${stats.today.requests}</strong><small>${stats.today.succeeded} réussi(s) · ${stats.today.failed} échec(s)</small></div>
+    <div><span>Coût estimé aujourd’hui</span><strong>${estimatedFcfa(stats.today.estimatedBilledUsd)}</strong><small>${usd(stats.today.estimatedBilledUsd)} après allocation gratuite</small></div>
+    <div><span>Coût estimé ce mois</span><strong>${estimatedFcfa(stats.month.estimatedBilledUsd)}</strong><small>${usd(stats.month.estimatedBilledUsd)} · valeur brute ${usd(stats.month.grossUsd)}</small></div>
+    <div><span>Volume du mois</span><strong>${new Intl.NumberFormat('fr-FR').format(stats.month.tokens)}</strong><small>tokens · ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(stats.month.neurons)} neurons</small></div>
+  </div><p class="wa-cost-note">Cloudflare offre 10 000 neurons par jour. Le montant en FCFA utilise un taux indicatif de 600 FCFA pour 1 USD ; il s’agit d’une estimation, pas d’une facture.</p></section>`
 }
 
 function whatsappSummaryCard(filter, label, value, detail = '') {
@@ -758,6 +818,7 @@ function whatsappPanel() {
       ${whatsappSummaryCard('a_verifier', 'À vérifier', counts.a_verifier)}
     </div>
     <div class="wa-logic-note"><strong>Lecture automatique :</strong> « Ont répondu » regroupe les échanges réels. Si le contact a écrit en dernier, il passe dans « BEVA doit répondre ». Si BEVA a écrit en dernier, il passe dans « En attente du contact ».</div>
+    ${whatsappCostPanel()}
     <section class="panel wa-panel"><div class="panel-head"><div><h2>Suivi des conversations WhatsApp</h2><p class="muted">${contacts.length} contact${contacts.length > 1 ? 's' : ''} trouvé${contacts.length > 1 ? 's' : ''} sur ${counts.all} · Page ${state.whatsappPage}/${page.totalPages}</p></div><div class="wa-panel-actions"><button id="refresh-whatsapp" class="secondary" type="button">Actualiser</button><button id="export-whatsapp" class="secondary" type="button">Exporter en Excel</button></div></div>
       <div class="wa-filters"><label>Recherche<input id="wa-search" value="${esc(state.whatsappSearch)}" placeholder="Nom, numéro, formation ou message"></label><label>Situation<select id="wa-filter">${options}</select></label><label>Responsable<select id="wa-assignee"><option value="all">Tous</option><option value="none" ${state.whatsappAssignee === 'none' ? 'selected' : ''}>Non affectés</option>${staffOptions}</select></label><label>Qualification<select id="wa-commercial"><option value="all">Toutes</option>${commercial}</select></label></div>
       <div class="wa-mobile-list">${whatsappMobileCards(page.rows) || '<div class="empty">Aucun contact pour ces filtres.</div>'}</div>
@@ -861,16 +922,22 @@ async function whatsappContactModal(contactId) {
     submit.disabled = true
     submit.textContent = 'Enregistrement…'
     error.textContent = ''
-    const suivi = String(data.get('suivi_reponse') || '')
+    const attentionReason = String(data.get('attention_reason') || '') || null
+    const suivi = attentionReason ? 'beva_doit_repondre' : String(data.get('suivi_reponse') || '')
+    const reviewedAt = new Date().toISOString()
     const { error: updateError } = await supabase.from('wa_contacts').update({
       statut_whatsapp: 'ont_repondu',
       suivi_reponse: suivi,
       commercial_status: data.get('commercial_status'),
       assigned_to: data.get('assigned_to') || null,
-      attention_reason: data.get('attention_reason') || null,
+      attention_reason: attentionReason,
+      attention_opened_at: attentionReason ? (contact.attention_opened_at || reviewedAt) : null,
+      attention_resolved_at: !attentionReason && contact.attention_reason ? reviewedAt : null,
+      attention_resolved_by: !attentionReason && contact.attention_reason ? state.user.id : null,
+      awaiting_payment_proof_until: attentionReason === 'justificatif_paiement' ? null : contact.awaiting_payment_proof_until,
       next_follow_up_at: data.get('next_follow_up_at') ? new Date(data.get('next_follow_up_at')).toISOString() : null,
       internal_note: String(data.get('internal_note') || '').trim() || null,
-      last_reviewed_at: new Date().toISOString(),
+      last_reviewed_at: reviewedAt,
       last_reviewed_by: state.user.id
     }).eq('id', contactId)
     if (updateError) {
