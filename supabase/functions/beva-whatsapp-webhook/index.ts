@@ -1802,3 +1802,15 @@ Deno.serve(async (req: Request) => {
   EdgeRuntime.waitUntil(processWebhookPayload());
   return json({ received: true, queued: true });
 });
+
+// Exports purs pour les tests de politique conversationnelle. Ils n’exposent
+// aucun secret et ne changent pas le point d’entrée du webhook Supabase.
+export {
+  asksScholarshipEligibility,
+  detectTextIntents,
+  extractAiDecision,
+  isScholarshipFollowUp,
+  selectRelevantKnowledge,
+  textNeedsLiveCourseConfirmation,
+  validateAiReply,
+};
