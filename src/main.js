@@ -15,7 +15,6 @@ const state = { user: null, staff: null, staffDirectory: [], students: [], stude
 
 const QWEN_FREE_NEURONS_PER_DAY = 10000
 const QWEN_USD_PER_1000_NEURONS = 0.011
-const ESTIMATED_USD_TO_FCFA = 600
 
 const money = value => new Intl.NumberFormat('fr-FR').format(Number(value || 0)) + ' FCFA'
 const usd = value => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(Number(value || 0))
@@ -786,13 +785,12 @@ function whatsappAiStats() {
 
 function whatsappCostPanel() {
   const stats = whatsappAiStats()
-  const estimatedFcfa = value => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value * ESTIMATED_USD_TO_FCFA)} FCFA`
   return `<section class="panel wa-cost-panel"><div class="panel-head"><div><h2>Consommation de l’intelligence artificielle</h2><p class="muted">Estimations Qwen calculées à partir des tokens réellement retournés par Cloudflare.</p></div><span class="badge ok">Suivi automatique</span></div><div class="wa-cost-grid">
     <div><span>Appels IA aujourd’hui</span><strong>${stats.today.requests}</strong><small>${stats.today.succeeded} réussi(s) · ${stats.today.failed} échec(s)</small></div>
-    <div><span>Coût estimé aujourd’hui</span><strong>${estimatedFcfa(stats.today.estimatedBilledUsd)}</strong><small>${usd(stats.today.estimatedBilledUsd)} après allocation gratuite</small></div>
-    <div><span>Coût estimé ce mois</span><strong>${estimatedFcfa(stats.month.estimatedBilledUsd)}</strong><small>${usd(stats.month.estimatedBilledUsd)} · valeur brute ${usd(stats.month.grossUsd)}</small></div>
+    <div><span>Coût estimé aujourd’hui</span><strong>${usd(stats.today.estimatedBilledUsd)}</strong><small>USD après allocation gratuite</small></div>
+    <div><span>Coût estimé ce mois</span><strong>${usd(stats.month.estimatedBilledUsd)}</strong><small>USD · valeur brute ${usd(stats.month.grossUsd)}</small></div>
     <div><span>Volume du mois</span><strong>${new Intl.NumberFormat('fr-FR').format(stats.month.tokens)}</strong><small>tokens · ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(stats.month.neurons)} neurons</small></div>
-  </div><p class="wa-cost-note">Cloudflare offre 10 000 neurons par jour. Le montant en FCFA utilise un taux indicatif de 600 FCFA pour 1 USD ; il s’agit d’une estimation, pas d’une facture.</p></section>`
+  </div><p class="wa-cost-note">Cloudflare offre 10 000 neurons par jour. Tous les coûts sont affichés en dollars américains (USD) ; il s’agit d’une estimation, pas d’une facture.</p></section>`
 }
 
 function whatsappSummaryCard(filter, label, value, detail = '') {
@@ -817,7 +815,7 @@ function whatsappPanel() {
       ${whatsappSummaryCard('aujourdhui', 'Nouvelles aujourd’hui', counts.aujourdhui)}
       ${whatsappSummaryCard('a_verifier', 'À vérifier', counts.a_verifier)}
     </div>
-    <div class="wa-logic-note"><strong>Lecture automatique :</strong> « Ont répondu » regroupe les échanges réels. Si le contact a écrit en dernier, il passe dans « BEVA doit répondre ». Si BEVA a écrit en dernier, il passe dans « En attente du contact ».</div>
+    <div class="wa-logic-note"><strong>Lecture automatique :</strong> « Ont répondu » regroupe les échanges réels. Si le contact a écrit en dernier, il passe dans « BEVA doit répondre ». Si BEVA a écrit en dernier, il passe dans « En attente du contact ». Lorsqu’une action humaine est ouverte, l’IA reste en pause jusqu’à ce qu’un membre du personnel la marque comme résolue.</div>
     ${whatsappCostPanel()}
     <section class="panel wa-panel"><div class="panel-head"><div><h2>Suivi des conversations WhatsApp</h2><p class="muted">${contacts.length} contact${contacts.length > 1 ? 's' : ''} trouvé${contacts.length > 1 ? 's' : ''} sur ${counts.all} · Page ${state.whatsappPage}/${page.totalPages}</p></div><div class="wa-panel-actions"><button id="refresh-whatsapp" class="secondary" type="button">Actualiser</button><button id="export-whatsapp" class="secondary" type="button">Exporter en Excel</button></div></div>
       <div class="wa-filters"><label>Recherche<input id="wa-search" value="${esc(state.whatsappSearch)}" placeholder="Nom, numéro, formation ou message"></label><label>Situation<select id="wa-filter">${options}</select></label><label>Responsable<select id="wa-assignee"><option value="all">Tous</option><option value="none" ${state.whatsappAssignee === 'none' ? 'selected' : ''}>Non affectés</option>${staffOptions}</select></label><label>Qualification<select id="wa-commercial"><option value="all">Toutes</option>${commercial}</select></label></div>
@@ -909,10 +907,16 @@ async function whatsappContactModal(contactId) {
   const attention = attentionOptions.map(([value, label]) => `<option value="${value}" ${String(contact.attention_reason || '') === value ? 'selected' : ''}>${esc(label)}</option>`).join('')
   body.innerHTML = `<div class="wa-contact-overview"><div><span>Numéro</span><strong>${esc(contact.phone || contact.wa_id || '—')}</strong></div><div><span>Situation automatique</span><strong>${esc(whatsappSituation(contact))}</strong></div><div><span>Premier contact</span><strong>${dateTime(contact.first_seen_at)}</strong></div><div><span>Dernière activité</span><strong>${dateTime(contact.last_message_at)}</strong></div></div>
     <div class="wa-modal-actions"><a class="primary wa-link" href="https://wa.me/${phoneForWhatsApp(contact.phone || contact.wa_id)}" target="_blank" rel="noopener">Ouvrir dans WhatsApp</a></div>
-    <form id="wa-follow-up-form" class="wa-follow-up-form"><div class="grid-2"><label>Qualification<select name="commercial_status">${commercial}</select></label><label>Responsable<select name="assigned_to"><option value="">Non affecté</option>${staffOptions}</select></label><label>Suivi de la réponse<select name="suivi_reponse"><option value="beva_doit_repondre" ${contact.suivi_reponse === 'beva_doit_repondre' ? 'selected' : ''}>BEVA doit répondre</option><option value="en_attente_du_contact" ${contact.suivi_reponse === 'en_attente_du_contact' ? 'selected' : ''}>En attente du contact</option></select></label><label>Action spéciale<select name="attention_reason">${attention}</select></label><label>Prochaine relance<input name="next_follow_up_at" type="datetime-local" value="${dateTimeInputValue(contact.next_follow_up_at)}"></label></div><label>Note interne<textarea name="internal_note" rows="4" maxlength="4000" placeholder="Informations utiles pour le prochain membre de l’équipe">${esc(contact.internal_note || '')}</textarea></label><p class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Fermer</button><button type="submit" class="primary">Enregistrer le suivi</button></div></form>
+    <form id="wa-follow-up-form" class="wa-follow-up-form"><div class="grid-2"><label>Qualification<select name="commercial_status">${commercial}</select></label><label>Responsable<select name="assigned_to"><option value="">Non affecté</option>${staffOptions}</select></label><label>Suivi de la réponse<select name="suivi_reponse"><option value="beva_doit_repondre" ${contact.suivi_reponse === 'beva_doit_repondre' ? 'selected' : ''}>BEVA doit répondre</option><option value="en_attente_du_contact" ${contact.suivi_reponse === 'en_attente_du_contact' ? 'selected' : ''}>En attente du contact</option></select></label><label>Action spéciale<select name="attention_reason">${attention}</select></label><label>Prochaine relance<input name="next_follow_up_at" type="datetime-local" value="${dateTimeInputValue(contact.next_follow_up_at)}"></label></div>${contact.attention_reason ? '<p class="wa-human-pause"><strong>Réponse automatique en pause.</strong> Répondez à la personne dans WhatsApp, puis marquez cette demande comme résolue.</p>' : ''}<label>Note interne<textarea name="internal_note" rows="4" maxlength="4000" placeholder="Informations utiles pour le prochain membre de l’équipe">${esc(contact.internal_note || '')}</textarea></label><p class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Fermer</button>${contact.attention_reason ? '<button type="button" class="secondary resolve-human-request">Marquer comme résolu</button>' : ''}<button type="submit" class="primary">Enregistrer le suivi</button></div></form>
     <section class="wa-modal-section"><h3>Inscriptions reçues par le Flow</h3>${submissionMarkup || '<div class="empty">Aucune inscription Flow pour ce contact.</div>'}</section>
     <section class="wa-modal-section"><h3>Historique des messages</h3><div class="wa-conversation">${messageMarkup || '<div class="empty">Aucun message enregistré.</div>'}</div></section>`
   body.querySelector('.cancel').addEventListener('click', () => backdrop.remove())
+  body.querySelector('.resolve-human-request')?.addEventListener('click', () => {
+    const form = body.querySelector('#wa-follow-up-form')
+    form.elements.attention_reason.value = ''
+    form.elements.suivi_reponse.value = 'en_attente_du_contact'
+    form.requestSubmit()
+  })
   body.querySelector('#wa-follow-up-form').addEventListener('submit', async event => {
     event.preventDefault()
     const form = event.currentTarget
