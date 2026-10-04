@@ -34,7 +34,7 @@ Chaque formation comprend généralement deux séances de deux heures par semain
 
 ${CONVERSION_PROMPT}`;
 
-const VISITE_TEXT = `Vous pouvez visiter BEVA du lundi au samedi, de 9 h à 21 h.
+const VISITE_TEXT = `Vous pouvez visiter BEVA du lundi au samedi, de 10 h à 21 h.
 
 Adresse : Atrokpocodji, ancien impôt, première rue à droite.
 Localisation : https://maps.app.goo.gl/x1sx7LD96iJitBQz5
@@ -1051,7 +1051,7 @@ function flowConfirmationText(response: Record<string, unknown>, formations: str
 
 Pour confirmer votre place et maintenir votre bourse, veuillez passer à BEVA dans les 3 jours suivant votre inscription afin d’effectuer un premier versement.
 
-BEVA est ouverte du lundi au samedi, de 9 h à 21 h.
+BEVA est ouverte du lundi au samedi, de 10 h à 21 h.
 Adresse : Atrokpocodji, ancien impôt, première rue à droite.
 Localisation : https://maps.app.goo.gl/x1sx7LD96iJitBQz5`;
   }
