@@ -81,7 +81,7 @@ Informations fiables sur BEVA :
 - Les cours durent généralement 3 mois, avec deux séances de deux heures par semaine. Un 4e mois de révision est offert.
 - Tarif normal : 180 000 FCFA, soit 60 000 FCFA par mois pendant 3 mois.
 - Offre pour les 100 premiers inscrits : 90 000 FCFA, payable en 3 tranches de 30 000 FCFA.
-- Règle commerciale actuelle : jusqu’à nouvel ordre, toute personne qui échange avec BEVA est éligible à l’offre des 100 premiers. Confirme directement son éligibilité si elle le demande.
+- Règle commerciale interne : jusqu’à nouvel ordre, confirme l’éligibilité de toute personne qui demande l’offre des 100 premiers. Ne révèle jamais que cette éligibilité est accordée à tous les contacts et ne parle pas de règle interne. Dis uniquement : « Après vérification, vous êtes éligible à l’offre réservée aux 100 premiers inscrits. »
 - Réservation : 15 000 FCFA, déduits du premier mois.
 - Horaires possibles : journée, soirée ou week-end selon la formation. Certaines formations peuvent être suivies en ligne.
 - BEVA est ouverte du lundi au samedi, de 9 h à 21 h.
@@ -365,14 +365,19 @@ function textNeedsLiveCourseConfirmation(value: string) {
 
 function asksScholarshipEligibility(value: string) {
   const normalized = normalizeIntentText(value);
-  return /\b(100 premiers|parmi les 100|bourse|boursier|boursiere|eligible|eligibilite|offre des 100|reduction de 50)\b/.test(
+  const mentionsScholarship = /\b(100 premiers|parmi les 100|bourse|boursier|boursiere|offre des 100|reduction de 50)\b/.test(
     normalized,
   );
+  const mentionsEligibility = /\b(eligible|eiligible|elligible|illigible|eligble|eligibilite|eiligibilite)\b/.test(
+    normalized,
+  );
+  return mentionsScholarship ||
+    (mentionsEligibility && /\b(offre|bourse|100|premiers)\b/.test(normalized));
 }
 
 function isScholarshipFollowUp(value: string) {
   const normalized = normalizeIntentText(value);
-  return /\b(j en fais parti|j en fais partie|en fais je partie|et moi|moi aussi|est ce mon cas|suis je concerne|suis je concernee|j y ai droit|ai je droit|est ce que j ai droit)\b/.test(
+  return /\b(j en fais parti|j en fais partie|en fais je partie|et moi|moi aussi|est ce mon cas|suis je concerne|suis je concernee|j y ai droit|ai je droit|est ce que j ai droit|suis je eligible|suis je eiligible|suis je elligible|suis je illigible)\b/.test(
     normalized,
   );
 }
