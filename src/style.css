@@ -301,6 +301,14 @@ td { font-size: 14px; }
 .wa-stat-card strong { display: block; margin-top: 5px; color: #092f5b; font-size: 27px; }
 .wa-stat-card small { min-height: 28px; margin-top: 5px; color: #718096; font-size: 10px; line-height: 1.4; }
 .wa-logic-note { padding: 13px 15px; border: 1px solid #cfe2f7; border-radius: 13px; color: #214e7f; background: #edf6ff; font-size: 13px; line-height: 1.5; }
+.wa-cost-panel { overflow: hidden; }
+.wa-cost-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0 20px 18px; }
+.wa-cost-grid > div { min-width: 0; padding: 15px; border: 1px solid #d8eadf; border-radius: 13px; background: linear-gradient(145deg, #fbfffc, #effaf3); }
+.wa-cost-grid span, .wa-cost-grid strong, .wa-cost-grid small { display: block; }
+.wa-cost-grid span { color: #587064; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.wa-cost-grid strong { margin-top: 7px; color: #125a36; font-size: 23px; overflow-wrap: anywhere; }
+.wa-cost-grid small { margin-top: 5px; color: #718096; font-size: 10px; line-height: 1.45; }
+.wa-cost-note { margin: 0; padding: 12px 20px; border-top: 1px solid #e2eee6; color: #607268; background: #f8fcf9; font-size: 11px; line-height: 1.5; }
 .wa-panel-actions { display: flex; gap: 8px; }
 .wa-filters { display: grid; grid-template-columns: minmax(240px, 1.5fr) repeat(3, minmax(150px, 1fr)); gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e9edf3; background: #fbfdff; }
 .wa-filters label { min-width: 0; }
@@ -337,6 +345,7 @@ td { font-size: 14px; }
 @media (max-width: 960px) {
   .cards { grid-template-columns: 1fr 1fr; }
   .wa-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wa-cost-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wa-filters { grid-template-columns: 1fr 1fr; }
   .shell { grid-template-columns: 82px 1fr; }
   .sidebar { padding-inline: 12px; }
@@ -489,6 +498,9 @@ td { font-size: 14px; }
   .wa-stat-card strong { font-size: 22px; }
   .wa-stat-card small { min-height: 0; }
   .wa-logic-note { padding: 11px 12px; font-size: 11px; }
+  .wa-cost-grid { grid-template-columns: 1fr; padding: 0 12px 13px; }
+  .wa-cost-grid > div { padding: 12px; }
+  .wa-cost-note { padding: 11px 12px; }
   .wa-panel-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .wa-filters { grid-template-columns: 1fr; padding: 13px; }
   .wa-filters input, .wa-filters select { min-height: 46px; font-size: 16px; }
