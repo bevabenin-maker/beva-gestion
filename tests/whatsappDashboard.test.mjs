@@ -27,7 +27,7 @@ assert.match(migration, /revoke all on public\.wa_contacts from anon/)
 assert.match(migration, /private\.current_staff_role\(\)/)
 assert.match(migration, /wa_contacts_staff_update/)
 
-const reliabilityMigration = fs.readFileSync(new URL('../supabase/migrations/20261004123500_whatsapp_reliability_ai_costs.sql', import.meta.url), 'utf8')
+const reliabilityMigration = fs.readFileSync(new URL('../supabase/migrations/20261004123947_whatsapp_reliability_ai_costs.sql', import.meta.url), 'utf8')
 assert.match(reliabilityMigration, /create table if not exists public\.wa_ai_requests/)
 assert.match(reliabilityMigration, /wa_ai_requests_staff_read/)
 assert.match(reliabilityMigration, /security_invoker = true/)
