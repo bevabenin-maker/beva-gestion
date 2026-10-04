@@ -404,8 +404,21 @@ function normalizeIntentText(value: string) {
     .toLocaleLowerCase("fr");
 }
 
+function asksCenterVisitOrOpeningHours(value: string) {
+  const normalized = normalizeIntentText(value);
+  const mentionsBevaPlace = /\b(beva|centre|local|locaux|siege)\b/.test(normalized);
+  const asksWhenOpen = /\b(heure|heures|horaire|horaires|quand)\b/.test(normalized) &&
+    /\b(ouvert|ouverte|ouverts|ouverture|ferme|fermee|fermeture)\b/.test(normalized);
+  const asksWhenToCome = /\b(me rendre|se rendre|venir|passer|visiter|aller)\b/.test(normalized) &&
+    /\b(heure|heures|horaire|horaires|quand|matin|midi|soir|jour)\b/.test(normalized);
+  const asksLocation = /\b(adresse|localisation|itineraire|ou etes vous)\b/.test(normalized);
+
+  return asksWhenOpen || asksLocation || (mentionsBevaPlace && asksWhenToCome);
+}
+
 function detectTextIntents(value: string): TextIntent[] {
   const normalized = normalizeIntentText(value);
+  const centerVisitQuestion = asksCenterVisitOrOpeningHours(value);
   const intents: TextIntent[] = [];
 
   const add = (intent: TextIntent) => {
@@ -436,6 +449,7 @@ function detectTextIntents(value: string): TextIntent[] {
   }
 
   if (
+    !centerVisitQuestion &&
     /\b(horaire|horaires|horraire|horraires|heure|heures|creneau|creneaux|emploi du temps|journee|soiree|week end|weekend|jours de cours|planning)\b/.test(
       normalized,
     )
@@ -470,6 +484,7 @@ function detectTextIntents(value: string): TextIntent[] {
   }
 
   if (
+    centerVisitQuestion ||
     /\b(visiter beva|faire une visite|venir a beva|passer a beva|adresse|localisation|itineraire|ou etes vous)\b/.test(
       normalized,
     )
@@ -1554,6 +1569,7 @@ Deno.serve(async (req: Request) => {
                   const normalizedQuestion = normalizeIntentText(originalQuestion);
                   const menuRequested = ["menu", "accueil"].includes(normalizedQuestion);
                   const textIntents = detectTextIntents(originalQuestion);
+                  const centerVisitQuestion = asksCenterVisitOrOpeningHours(originalQuestion);
                   const { data: recentMessages, error: recentMessagesError } = await supabase
                     .from("wa_messages")
                     .select("direction,body,occurred_at,raw_payload")
@@ -1626,6 +1642,10 @@ Deno.serve(async (req: Request) => {
                     menu = "conseiller_ia";
                     requiresHuman = true;
                     attentionReason = "question_libre";
+                  } else if (centerVisitQuestion) {
+                    sent = await sendText(phone, VISITE_TEXT);
+                    outboundBody = VISITE_TEXT;
+                    menu = "visite";
                   } else if (textIntents.some((intent) =>
                     ["formations", "tarifs", "horaires", "inscription"].includes(intent)
                   )) {
@@ -1895,6 +1915,7 @@ Deno.serve(async (req: Request) => {
 // Exports purs pour les tests de politique conversationnelle. Ils n’exposent
 // aucun secret et ne changent pas le point d’entrée du webhook Supabase.
 export {
+  asksCenterVisitOrOpeningHours,
   asksScholarshipEligibility,
   detectTextIntents,
   extractAiDecision,
