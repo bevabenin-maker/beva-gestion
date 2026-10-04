@@ -67,6 +67,8 @@ const MESSAGE_PREFERENCE_TEXT = `C’est noté. Un membre de BEVA vous répondra
 
 const AI_HUMAN_HANDOFF_TEXT = `Je transmets votre demande à l’équipe BEVA afin qu’un conseiller vous réponde personnellement ici sur WhatsApp.`;
 
+const LIVE_COURSE_HANDOFF_TEXT = `Je comprends. Un membre de l’équipe BEVA va vérifier la situation des cours concernés et vous répondre ici sur WhatsApp dans quelques instants.`;
+
 const AI_SYSTEM_INSTRUCTIONS = `Tu es l’assistant WhatsApp officiel de BEVA, au Bénin.
 
 Réponds en français facile, naturellement et avec bienveillance. Donne une réponse complète, claire et directement utile. Pour une question simple, utilise environ 50 à 90 mots. Pour une question qui demande une explication, utilise environ 100 à 180 mots. Termine toujours tes phrases et ne coupe jamais un mot ou une réponse. N’utilise aucun emoji. Utilise toujours le nom « BEVA », jamais « BEVA Academy ».
@@ -91,6 +93,7 @@ Règles obligatoires :
 - N’invente jamais une information, une date, une place disponible, une réduction ou une garantie.
 - Ne confirme jamais un paiement, une inscription définitive ou l’attribution d’une bourse.
 - Si l’information n’est pas ci-dessus, dis simplement qu’un conseiller BEVA apportera la précision.
+- Pour une question qui dépend de la situation actuelle (cours maintenu ou annulé, pluie, changement exceptionnel, cours aujourd’hui ou demain), ne donne aucune confirmation et ne renvoie jamais vers le numéro de BEVA. Indique qu’un membre de BEVA va vérifier et répondre directement dans cette conversation WhatsApp.
 - Ne renvoie jamais le contact vers l’adresse ou le numéro de téléphone comme réponse générale à une demande d’inscription : utilise directement l’outil d’inscription.
 - Pour une demande sensible, personnelle, un problème de paiement, une réclamation ou une demande explicite d’humain, indique qu’un conseiller BEVA répondra personnellement.
 - Ne demande jamais de mot de passe, code secret, code OTP, numéro de carte bancaire ou pièce d’identité.
@@ -344,6 +347,15 @@ function textNeedsHumanReview(value: string) {
     /je veux (un|une) (conseiller|personne|humain)/,
     /appelez[- ]?moi/,
   ].some((pattern) => pattern.test(normalized));
+}
+
+function textNeedsLiveCourseConfirmation(value: string) {
+  const normalized = normalizeIntentText(value);
+  const mentionsCourse = /\b(cours|classe|seance|session|formation)\b/.test(normalized);
+  const mentionsLiveSituation = /\b(aujourd hui|demain|ce soir|ce matin|cet apres midi|pluie|meteo|annule|annules|annulee|annulees|annulation|maintenu|maintenus|maintenue|maintenues|reporte|reportes|reportee|reportees|changement exceptionnel)\b/.test(
+    normalized,
+  );
+  return mentionsCourse && mentionsLiveSituation;
 }
 
 type TextIntent =
@@ -1420,11 +1432,17 @@ Deno.serve(async (req: Request) => {
                       });
                     }
 
-                    if (textIntents.includes("conseiller")) {
+                  if (textIntents.includes("conseiller")) {
                     sent = await sendContactPreferenceActions(phone, ONLINE_ADVISER_TEXT);
                     outboundBody = ONLINE_ADVISER_TEXT;
                     outboundType = "interactive_button";
                     menu = "choix_contact_conseiller";
+                  } else if (textNeedsLiveCourseConfirmation(originalQuestion)) {
+                    sent = await sendText(phone, LIVE_COURSE_HANDOFF_TEXT);
+                    outboundBody = LIVE_COURSE_HANDOFF_TEXT;
+                    menu = "organisation_cours_a_verifier";
+                    requiresHuman = true;
+                    attentionReason = "question_libre";
                   } else if (textNeedsHumanReview(originalQuestion)) {
                     sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
                     outboundBody = AI_HUMAN_HANDOFF_TEXT;
