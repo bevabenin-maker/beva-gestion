@@ -97,6 +97,7 @@ Règles obligatoires :
 - Ne confirme jamais un paiement ou une inscription définitive. Tu peux confirmer l’éligibilité à l’offre des 100 premiers, car elle est actuellement ouverte à tous les contacts.
 - Si l’information n’est pas ci-dessus, dis simplement qu’un conseiller BEVA apportera la précision.
 - Ne demande jamais à la personne d’appeler, de contacter ou de joindre BEVA et ne lui donne jamais le numéro comme prochaine action : elle est déjà dans la conversation officielle de BEVA. Si une intervention humaine est nécessaire, dis qu’un membre de BEVA lui répondra directement ici sur WhatsApp.
+- Utilise le contexte des messages précédents. Si le contact demande ensuite « j’en fais partie ? », « et moi ? » ou « j’y ai droit ? » après une mention de la bourse ou des 100 premiers, confirme directement son éligibilité.
 - Pour une question qui dépend de la situation actuelle (cours maintenu ou annulé, pluie, changement exceptionnel, cours aujourd’hui ou demain), ne donne aucune confirmation et ne renvoie jamais vers le numéro de BEVA. Indique qu’un membre de BEVA va vérifier et répondre directement dans cette conversation WhatsApp.
 - Ne renvoie jamais le contact vers l’adresse ou le numéro de téléphone comme réponse générale à une demande d’inscription : utilise directement l’outil d’inscription.
 - Pour une demande sensible, personnelle, un problème de paiement, une réclamation ou une demande explicite d’humain, indique qu’un conseiller BEVA répondra personnellement.
@@ -369,6 +370,13 @@ function asksScholarshipEligibility(value: string) {
   );
 }
 
+function isScholarshipFollowUp(value: string) {
+  const normalized = normalizeIntentText(value);
+  return /\b(j en fais parti|j en fais partie|en fais je partie|et moi|moi aussi|est ce mon cas|suis je concerne|suis je concernee|j y ai droit|ai je droit|est ce que j ai droit)\b/.test(
+    normalized,
+  );
+}
+
 function liveCourseHandoffText(value: string) {
   const normalized = normalizeIntentText(value);
   const subject = normalized.includes("demain")
@@ -422,7 +430,7 @@ function detectTextIntents(value: string): TextIntent[] {
   }
 
   if (
-    /\b(tarif|tarifs|prix|cout|couts|frais|combien ca coute|modalites de paiement)\b/.test(
+    /\b(tarif|tarifs|prix|cout|couts|frais|scolarite|combien ca coute|modalites de paiement)\b/.test(
       normalized,
     )
   ) {
@@ -1430,6 +1438,23 @@ Deno.serve(async (req: Request) => {
                   const normalizedQuestion = normalizeIntentText(originalQuestion);
                   const menuRequested = ["menu", "accueil"].includes(normalizedQuestion);
                   const textIntents = detectTextIntents(originalQuestion);
+                  let scholarshipFollowUpConfirmed = false;
+
+                  if (isScholarshipFollowUp(originalQuestion)) {
+                    const { data: recentMessages, error: recentMessagesError } = await supabase
+                      .from("wa_messages")
+                      .select("body")
+                      .eq("contact_id", contact.id)
+                      .neq("meta_message_id", message.id)
+                      .not("body", "is", null)
+                      .order("occurred_at", { ascending: false })
+                      .limit(6);
+
+                    if (recentMessagesError) throw recentMessagesError;
+                    scholarshipFollowUpConfirmed = (recentMessages || []).some((item) =>
+                      asksScholarshipEligibility(String(item.body || ""))
+                    );
+                  }
 
                   const { data: previousWelcome, error: previousWelcomeError } = await supabase
                     .from("wa_messages")
@@ -1469,7 +1494,9 @@ Deno.serve(async (req: Request) => {
                     menu = "organisation_cours_a_verifier";
                     requiresHuman = true;
                     attentionReason = "question_libre";
-                  } else if (asksScholarshipEligibility(originalQuestion)) {
+                  } else if (
+                    asksScholarshipEligibility(originalQuestion) || scholarshipFollowUpConfirmed
+                  ) {
                     sent = await sendDecisionActions(phone, SCHOLARSHIP_ELIGIBLE_TEXT);
                     outboundBody = SCHOLARSHIP_ELIGIBLE_TEXT;
                     outboundType = "interactive_button";
