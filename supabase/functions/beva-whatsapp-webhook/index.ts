@@ -67,8 +67,6 @@ const MESSAGE_PREFERENCE_TEXT = `C’est noté. Un membre de BEVA vous répondra
 
 const AI_HUMAN_HANDOFF_TEXT = `Je transmets votre demande à l’équipe BEVA afin qu’un conseiller vous réponde personnellement ici sur WhatsApp.`;
 
-const LIVE_COURSE_HANDOFF_TEXT = `Je comprends. Un membre de l’équipe BEVA va vérifier la situation des cours concernés et vous répondre ici sur WhatsApp dans quelques instants.`;
-
 const AI_SYSTEM_INSTRUCTIONS = `Tu es l’assistant WhatsApp officiel de BEVA, au Bénin.
 
 Réponds en français facile, naturellement et avec bienveillance. Donne une réponse complète, claire et directement utile. Pour une question simple, utilise environ 50 à 90 mots. Pour une question qui demande une explication, utilise environ 100 à 180 mots. Termine toujours tes phrases et ne coupe jamais un mot ou une réponse. N’utilise aucun emoji. Utilise toujours le nom « BEVA », jamais « BEVA Academy ».
@@ -356,6 +354,16 @@ function textNeedsLiveCourseConfirmation(value: string) {
     normalized,
   );
   return mentionsCourse && mentionsLiveSituation;
+}
+
+function liveCourseHandoffText(value: string) {
+  const normalized = normalizeIntentText(value);
+  const subject = normalized.includes("demain")
+    ? "si les cours de demain sont maintenus"
+    : normalized.includes("aujourd hui")
+    ? "si les cours d’aujourd’hui sont maintenus"
+    : "la situation des cours concernés";
+  return `Je comprends. Un membre de l’équipe BEVA va vérifier ${subject} et vous répondre ici sur WhatsApp dans quelques instants.`;
 }
 
 type TextIntent =
@@ -1438,8 +1446,9 @@ Deno.serve(async (req: Request) => {
                     outboundType = "interactive_button";
                     menu = "choix_contact_conseiller";
                   } else if (textNeedsLiveCourseConfirmation(originalQuestion)) {
-                    sent = await sendText(phone, LIVE_COURSE_HANDOFF_TEXT);
-                    outboundBody = LIVE_COURSE_HANDOFF_TEXT;
+                    const handoffText = liveCourseHandoffText(originalQuestion);
+                    sent = await sendText(phone, handoffText);
+                    outboundBody = handoffText;
                     menu = "organisation_cours_a_verifier";
                     requiresHuman = true;
                     attentionReason = "question_libre";
