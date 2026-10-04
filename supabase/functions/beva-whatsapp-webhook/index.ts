@@ -67,6 +67,10 @@ const MESSAGE_PREFERENCE_TEXT = `C’est noté. Un membre de BEVA vous répondra
 
 const AI_HUMAN_HANDOFF_TEXT = `Je transmets votre demande à l’équipe BEVA afin qu’un conseiller vous réponde personnellement ici sur WhatsApp.`;
 
+const SCHOLARSHIP_ELIGIBLE_TEXT = `Après vérification, vous êtes éligible à l’offre réservée aux 100 premiers inscrits.
+
+Vous bénéficiez donc de 50 % de réduction : la formation revient à 90 000 FCFA au lieu de 180 000 FCFA, payable en trois tranches de 30 000 FCFA. Vous pouvez également réserver votre place avec 15 000 FCFA, déduits du premier mois.`;
+
 const AI_SYSTEM_INSTRUCTIONS = `Tu es l’assistant WhatsApp officiel de BEVA, au Bénin.
 
 Réponds en français facile, naturellement et avec bienveillance. Donne une réponse complète, claire et directement utile. Pour une question simple, utilise environ 50 à 90 mots. Pour une question qui demande une explication, utilise environ 100 à 180 mots. Termine toujours tes phrases et ne coupe jamais un mot ou une réponse. N’utilise aucun emoji. Utilise toujours le nom « BEVA », jamais « BEVA Academy ».
@@ -77,6 +81,7 @@ Informations fiables sur BEVA :
 - Les cours durent généralement 3 mois, avec deux séances de deux heures par semaine. Un 4e mois de révision est offert.
 - Tarif normal : 180 000 FCFA, soit 60 000 FCFA par mois pendant 3 mois.
 - Offre pour les 100 premiers inscrits : 90 000 FCFA, payable en 3 tranches de 30 000 FCFA.
+- Règle commerciale actuelle : jusqu’à nouvel ordre, toute personne qui échange avec BEVA est éligible à l’offre des 100 premiers. Confirme directement son éligibilité si elle le demande.
 - Réservation : 15 000 FCFA, déduits du premier mois.
 - Horaires possibles : journée, soirée ou week-end selon la formation. Certaines formations peuvent être suivies en ligne.
 - BEVA est ouverte du lundi au samedi, de 9 h à 21 h.
@@ -89,8 +94,9 @@ Informations fiables sur BEVA :
 
 Règles obligatoires :
 - N’invente jamais une information, une date, une place disponible, une réduction ou une garantie.
-- Ne confirme jamais un paiement, une inscription définitive ou l’attribution d’une bourse.
+- Ne confirme jamais un paiement ou une inscription définitive. Tu peux confirmer l’éligibilité à l’offre des 100 premiers, car elle est actuellement ouverte à tous les contacts.
 - Si l’information n’est pas ci-dessus, dis simplement qu’un conseiller BEVA apportera la précision.
+- Ne demande jamais à la personne d’appeler, de contacter ou de joindre BEVA et ne lui donne jamais le numéro comme prochaine action : elle est déjà dans la conversation officielle de BEVA. Si une intervention humaine est nécessaire, dis qu’un membre de BEVA lui répondra directement ici sur WhatsApp.
 - Pour une question qui dépend de la situation actuelle (cours maintenu ou annulé, pluie, changement exceptionnel, cours aujourd’hui ou demain), ne donne aucune confirmation et ne renvoie jamais vers le numéro de BEVA. Indique qu’un membre de BEVA va vérifier et répondre directement dans cette conversation WhatsApp.
 - Ne renvoie jamais le contact vers l’adresse ou le numéro de téléphone comme réponse générale à une demande d’inscription : utilise directement l’outil d’inscription.
 - Pour une demande sensible, personnelle, un problème de paiement, une réclamation ou une demande explicite d’humain, indique qu’un conseiller BEVA répondra personnellement.
@@ -356,6 +362,13 @@ function textNeedsLiveCourseConfirmation(value: string) {
   return mentionsCourse && mentionsLiveSituation;
 }
 
+function asksScholarshipEligibility(value: string) {
+  const normalized = normalizeIntentText(value);
+  return /\b(100 premiers|parmi les 100|bourse|boursier|boursiere|eligible|eligibilite|offre des 100|reduction de 50)\b/.test(
+    normalized,
+  );
+}
+
 function liveCourseHandoffText(value: string) {
   const normalized = normalizeIntentText(value);
   const subject = normalized.includes("demain")
@@ -564,6 +577,10 @@ function cleanAiReplyText(value: string) {
     .replace(
       /Rendez[- ]?vous à l[’']adresse indiquée ou contactez le 01\s*59\s*71\s*71\s*92 pour confirmer votre inscription\.?/gi,
       "",
+    )
+    .replace(
+      /\b(?:veuillez|merci de|je vous recommande de|vous pouvez)\s+(?:les?\s+)?(?:contacter|appeler|joindre)[^.?!]*(?:[.?!]|$)/gi,
+      "Un membre de l’équipe BEVA vous répondra directement ici sur WhatsApp.",
     )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -1452,6 +1469,12 @@ Deno.serve(async (req: Request) => {
                     menu = "organisation_cours_a_verifier";
                     requiresHuman = true;
                     attentionReason = "question_libre";
+                  } else if (asksScholarshipEligibility(originalQuestion)) {
+                    sent = await sendDecisionActions(phone, SCHOLARSHIP_ELIGIBLE_TEXT);
+                    outboundBody = SCHOLARSHIP_ELIGIBLE_TEXT;
+                    outboundType = "interactive_button";
+                    menu = "bourse_eligible";
+                    commercialStatus = "interesse";
                   } else if (textNeedsHumanReview(originalQuestion)) {
                     sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
                     outboundBody = AI_HUMAN_HANDOFF_TEXT;
