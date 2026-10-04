@@ -11,7 +11,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const appUrl = () => window.location.href.split('#')[0]
 
 const app = document.querySelector('#app')
-const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], whatsappContacts: [], whatsappAiUsage: [], section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week', whatsappFilter: 'all', whatsappSearch: '', whatsappAssignee: 'all', whatsappCommercial: 'all', whatsappPage: 1, whatsappPageSize: 50 }
+const state = { user: null, staff: null, staffDirectory: [], students: [], studentNotes: [], enrollments: [], formations: [], payments: [], paymentAudit: [], intakes: [], whatsappContacts: [], whatsappAiUsage: [], whatsappAiKnowledge: [], whatsappAiSettings: null, section: 'dashboard', intakeFilter: null, paymentMonth: 'all', paymentHistoryRange: 'week', whatsappFilter: 'all', whatsappSearch: '', whatsappAssignee: 'all', whatsappCommercial: 'all', whatsappPage: 1, whatsappPageSize: 50 }
 
 const QWEN_FREE_NEURONS_PER_DAY = 10000
 const QWEN_USD_PER_1000_NEURONS = 0.011
@@ -101,6 +101,7 @@ const monthlyFeeFor = enrollment => Math.ceil(feeFor(Boolean(enrollment.scholars
 const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
 const canDeleteStudents = () => ['admin', 'direction'].includes(state.staff?.role)
 const canManagePayments = () => ['admin', 'direction'].includes(state.staff?.role)
+const canManageWhatsappAi = () => ['admin', 'direction'].includes(state.staff?.role)
 const canPermanentlyDeletePayments = () => state.staff?.role === 'admin'
 const dateTime = value => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const localDay = value => {
@@ -132,6 +133,22 @@ async function loadWhatsappAiUsage() {
     .select('*')
     .gte('usage_day', since.toISOString().slice(0, 10))
     .order('usage_day', { ascending: false })
+}
+
+async function loadWhatsappAiKnowledge() {
+  return supabase
+    .from('wa_ai_knowledge')
+    .select('id,knowledge_key,category,title,content,keywords,priority,active,updated_at,updated_by')
+    .order('priority', { ascending: false })
+    .order('title')
+}
+
+async function loadWhatsappAiSettings() {
+  return supabase
+    .from('wa_ai_settings')
+    .select('id,assistant_name,tone,fallback_text,max_history_messages,max_answer_chars,updated_at,updated_by')
+    .eq('id', true)
+    .single()
 }
 const auditActionLabel = action => ({ created: 'Versement enregistré', updated: 'Versement modifié', cancelled: 'Versement annulé', deleted: 'Versement supprimé' }[action] || 'Mise à jour')
 const staffName = id => state.staffDirectory.find(x => x.user_id === id)?.full_name || 'Système / ancien enregistrement'
@@ -342,7 +359,7 @@ function choosePasswordView() {
 }
 
 async function loadData() {
-  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage] = await Promise.all([
+  const [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage, whatsappAiKnowledge, whatsappAiSettings] = await Promise.all([
     supabase.from('staff_members').select('*').eq('user_id', state.user.id).single(),
     supabase.from('staff_members').select('user_id,full_name'),
     supabase.from('students').select('*').order('student_number', { ascending: false }),
@@ -353,9 +370,11 @@ async function loadData() {
     supabase.from('payment_audit_log').select('*').order('occurred_at', { ascending: false }),
     supabase.from('intakes').select('*').order('start_date', { ascending: false }),
     loadAllWhatsappContacts(),
-    loadWhatsappAiUsage()
+    loadWhatsappAiUsage(),
+    loadWhatsappAiKnowledge(),
+    loadWhatsappAiSettings()
   ])
-  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage].find(x => x.error)?.error
+  const firstError = [staff, staffDirectory, students, studentNotes, enrollments, formations, payments, paymentAudit, intakes, whatsappContacts, whatsappAiUsage, whatsappAiKnowledge, whatsappAiSettings].find(x => x.error)?.error
   if (firstError) throw firstError
   state.staff = staff.data
   state.staffDirectory = staffDirectory.data
@@ -368,6 +387,8 @@ async function loadData() {
   state.intakes = intakes.data
   state.whatsappContacts = whatsappContacts.data || []
   state.whatsappAiUsage = whatsappAiUsage.data || []
+  state.whatsappAiKnowledge = whatsappAiKnowledge.data || []
+  state.whatsappAiSettings = whatsappAiSettings.data || null
   if (!selectedIntake()) state.intakeFilter = state.intakes.find(x => x.active)?.id || state.intakes[0]?.id || null
 }
 
@@ -797,6 +818,18 @@ function whatsappSummaryCard(filter, label, value, detail = '') {
   return `<button class="wa-stat-card ${state.whatsappFilter === filter ? 'active' : ''}" type="button" data-wa-filter="${filter}"><span>${esc(label)}</span><strong>${value}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</button>`
 }
 
+const aiKnowledgeCategoryLabel = category => ({ formations: 'Formations', tarifs: 'Tarifs', bourse: 'Bourse', horaires: 'Horaires', inscription: 'Inscription', paiement: 'Paiement', institution: 'BEVA', regles: 'Règles de sécurité' }[category] || category)
+
+function whatsappAiKnowledgePanel() {
+  const settings = state.whatsappAiSettings
+  const activeCount = state.whatsappAiKnowledge.filter(item => item.active).length
+  const editControls = canManageWhatsappAi()
+    ? '<div class="wa-knowledge-actions"><button id="edit-ai-settings" class="secondary" type="button">Règles générales</button><button id="add-ai-knowledge" class="primary" type="button">+ Ajouter une information</button></div>'
+    : '<span class="badge">Lecture seule</span>'
+  const rows = state.whatsappAiKnowledge.map(item => `<details class="wa-knowledge-item ${item.active ? '' : 'inactive'}"><summary><span><strong>${esc(item.title)}</strong><small>${esc(aiKnowledgeCategoryLabel(item.category))} · priorité ${item.priority}</small></span><span class="badge ${item.active ? 'ok' : ''}">${item.active ? 'Active' : 'Inactive'}</span></summary><p>${esc(item.content)}</p>${item.keywords?.length ? `<div class="wa-keywords">${item.keywords.map(keyword => `<span>${esc(keyword)}</span>`).join('')}</div>` : ''}${canManageWhatsappAi() ? `<button class="link-btn edit-ai-knowledge" type="button" data-id="${item.id}">Modifier cette information</button>` : ''}</details>`).join('')
+  return `<section class="panel wa-knowledge-panel"><div class="panel-head"><div><h2>Base de connaissances de l’IA</h2><p class="muted">${activeCount} information${activeCount > 1 ? 's' : ''} active${activeCount > 1 ? 's' : ''}. Les réponses libres utilisent uniquement ces contenus puis passent par un contrôle avant envoi.</p></div>${editControls}</div><div class="wa-ai-settings-summary"><div><span>Style de réponse</span><strong>${esc(settings?.tone || 'Configuration par défaut')}</strong></div><div><span>Mémoire</span><strong>${Number(settings?.max_history_messages || 10)} messages récents</strong></div><div><span>Longueur maximale</span><strong>${Number(settings?.max_answer_chars || 1200)} caractères</strong></div></div><div class="wa-knowledge-list">${rows || '<div class="empty">Aucune connaissance configurée.</div>'}</div></section>`
+}
+
 function whatsappPanel() {
   const counts = whatsappCounts()
   const contacts = filteredWhatsappContacts()
@@ -817,6 +850,7 @@ function whatsappPanel() {
     </div>
     <div class="wa-logic-note"><strong>Lecture automatique :</strong> « Ont répondu » regroupe les échanges réels. Si le contact a écrit en dernier, il passe dans « BEVA doit répondre ». Si BEVA a écrit en dernier, il passe dans « En attente du contact ». Lorsqu’une action humaine est ouverte, l’IA reste en pause jusqu’à ce qu’un membre du personnel la marque comme résolue.</div>
     ${whatsappCostPanel()}
+    ${whatsappAiKnowledgePanel()}
     <section class="panel wa-panel"><div class="panel-head"><div><h2>Suivi des conversations WhatsApp</h2><p class="muted">${contacts.length} contact${contacts.length > 1 ? 's' : ''} trouvé${contacts.length > 1 ? 's' : ''} sur ${counts.all} · Page ${state.whatsappPage}/${page.totalPages}</p></div><div class="wa-panel-actions"><button id="refresh-whatsapp" class="secondary" type="button">Actualiser</button><button id="export-whatsapp" class="secondary" type="button">Exporter en Excel</button></div></div>
       <div class="wa-filters"><label>Recherche<input id="wa-search" value="${esc(state.whatsappSearch)}" placeholder="Nom, numéro, formation ou message"></label><label>Situation<select id="wa-filter">${options}</select></label><label>Responsable<select id="wa-assignee"><option value="all">Tous</option><option value="none" ${state.whatsappAssignee === 'none' ? 'selected' : ''}>Non affectés</option>${staffOptions}</select></label><label>Qualification<select id="wa-commercial"><option value="all">Toutes</option>${commercial}</select></label></div>
       <div class="wa-mobile-list">${whatsappMobileCards(page.rows) || '<div class="empty">Aucun contact pour ces filtres.</div>'}</div>
@@ -855,7 +889,89 @@ function bindWhatsappControls() {
   section.querySelectorAll('[data-wa-page]').forEach(button => button.addEventListener('click', () => { state.whatsappPage = Number(button.dataset.waPage); renderWhatsappSection() }))
   section.querySelector('#refresh-whatsapp')?.addEventListener('click', () => refresh('Données WhatsApp actualisées.'))
   section.querySelector('#export-whatsapp')?.addEventListener('click', event => runWhatsappExport(event.currentTarget))
+  section.querySelector('#edit-ai-settings')?.addEventListener('click', whatsappAiSettingsModal)
+  section.querySelector('#add-ai-knowledge')?.addEventListener('click', () => whatsappAiKnowledgeModal())
+  section.querySelectorAll('.edit-ai-knowledge').forEach(button => button.addEventListener('click', event => {
+    event.preventDefault()
+    whatsappAiKnowledgeModal(button.dataset.id)
+  }))
   bindWhatsappContactButtons(section)
+}
+
+function aiKnowledgeKey(title) {
+  const key = String(title || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48)
+  return key || `information_${Date.now()}`
+}
+
+function whatsappAiKnowledgeModal(id = null) {
+  if (!canManageWhatsappAi()) return toast('Seuls la direction et les administrateurs peuvent modifier l’IA.', true)
+  const item = id ? state.whatsappAiKnowledge.find(entry => entry.id === id) : null
+  const categories = ['formations', 'tarifs', 'bourse', 'horaires', 'inscription', 'paiement', 'institution', 'regles']
+  const categoryOptions = categories.map(category => `<option value="${category}" ${item?.category === category ? 'selected' : ''}>${esc(aiKnowledgeCategoryLabel(category))}</option>`).join('')
+  const modal = showModal(item ? `Modifier — ${esc(item.title)}` : 'Ajouter une information pour l’IA', `<form id="ai-knowledge-form" class="form-stack"><div class="grid-2"><label>Catégorie<select name="category" required>${categoryOptions}</select></label><label>Priorité<input name="priority" type="number" min="0" max="100" value="${Number(item?.priority ?? 50)}" required></label></div><label>Titre<input name="title" maxlength="120" value="${esc(item?.title || '')}" required></label><label>Information fiable<textarea name="content" rows="7" maxlength="8000" required placeholder="Écrivez uniquement une information vérifiée par BEVA.">${esc(item?.content || '')}</textarea></label><label>Mots-clés, séparés par des virgules<input name="keywords" value="${esc((item?.keywords || []).join(', '))}" placeholder="Ex. prix, tarif, coût"></label><label class="checkbox-line"><input name="active" type="checkbox" ${item?.active !== false ? 'checked' : ''}> Utiliser cette information dans les réponses</label><p class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button type="submit" class="primary">Enregistrer</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#ai-knowledge-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const submit = form.querySelector('button[type="submit"]')
+    const error = form.querySelector('.error')
+    const title = String(data.get('title') || '').trim()
+    const values = {
+      category: data.get('category'),
+      title,
+      content: String(data.get('content') || '').trim(),
+      keywords: String(data.get('keywords') || '').split(',').map(value => value.trim()).filter(Boolean),
+      priority: Number(data.get('priority')),
+      active: data.get('active') === 'on',
+      updated_by: state.user.id
+    }
+    submit.disabled = true
+    submit.textContent = 'Enregistrement…'
+    const result = item
+      ? await supabase.from('wa_ai_knowledge').update(values).eq('id', item.id)
+      : await supabase.from('wa_ai_knowledge').insert({ ...values, knowledge_key: aiKnowledgeKey(title) })
+    if (result.error) {
+      error.textContent = result.error.message
+      submit.disabled = false
+      submit.textContent = 'Enregistrer'
+      return
+    }
+    modal.remove()
+    await refresh('Base de connaissances mise à jour.')
+  })
+}
+
+function whatsappAiSettingsModal() {
+  if (!canManageWhatsappAi()) return toast('Seuls la direction et les administrateurs peuvent modifier l’IA.', true)
+  const settings = state.whatsappAiSettings
+  const modal = showModal('Règles générales de l’IA', `<form id="ai-settings-form" class="form-stack"><label>Nom interne de l’assistant<input name="assistant_name" maxlength="120" value="${esc(settings?.assistant_name || 'Assistant BEVA')}" required></label><label>Ton des réponses<textarea name="tone" rows="3" maxlength="1000" required>${esc(settings?.tone || '')}</textarea></label><label>Message de transfert humain<textarea name="fallback_text" rows="4" maxlength="1200" required>${esc(settings?.fallback_text || '')}</textarea></label><div class="grid-2"><label>Messages récents utilisés<input name="max_history_messages" type="number" min="2" max="30" value="${Number(settings?.max_history_messages || 10)}" required></label><label>Longueur maximale<input name="max_answer_chars" type="number" min="300" max="3000" value="${Number(settings?.max_answer_chars || 1200)}" required></label></div><p class="error"></p><div class="modal-actions"><button type="button" class="secondary cancel">Annuler</button><button type="submit" class="primary">Enregistrer</button></div></form>`)
+  modal.querySelector('.cancel').addEventListener('click', () => modal.remove())
+  modal.querySelector('#ai-settings-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const submit = form.querySelector('button[type="submit"]')
+    const error = form.querySelector('.error')
+    submit.disabled = true
+    submit.textContent = 'Enregistrement…'
+    const { error: updateError } = await supabase.from('wa_ai_settings').update({
+      assistant_name: String(data.get('assistant_name') || '').trim(),
+      tone: String(data.get('tone') || '').trim(),
+      fallback_text: String(data.get('fallback_text') || '').trim(),
+      max_history_messages: Number(data.get('max_history_messages')),
+      max_answer_chars: Number(data.get('max_answer_chars')),
+      updated_by: state.user.id
+    }).eq('id', true)
+    if (updateError) {
+      error.textContent = updateError.message
+      submit.disabled = false
+      submit.textContent = 'Enregistrer'
+      return
+    }
+    modal.remove()
+    await refresh('Règles de l’IA mises à jour.')
+  })
 }
 
 function bindWhatsappContactButtons(root = document) {
