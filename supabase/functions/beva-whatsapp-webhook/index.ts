@@ -5,6 +5,8 @@ const BEVA_FLOW_ID = "1652542553114083";
 const BEVA_FLOW_NAME = "Inscription BEVA";
 const GRAPH_API_VERSION = "v25.0";
 const WELCOME_TEXT = "Bonjour, je suis Chado, fondateur de BEVA. Merci de vous intéresser à BEVA. J’ai créé cette école pour que davantage de jeunes au Bénin puissent développer de vraies compétences, avoir confiance en eux et construire leur avenir. Je suis heureux de vous accueillir ici. Dites-nous simplement ce que vous recherchez.";
+const CONVERSION_PROMPT = "Souhaitez-vous vous inscrire maintenant ? Vous pouvez aussi consulter les tarifs ou les horaires avant de continuer.";
+const ACKNOWLEDGEMENT_PROMPT = "C’est noté. Souhaitez-vous maintenant remplir votre préinscription à BEVA ?";
 
 const FORMATIONS_TEXT = `BEVA propose les formations suivantes :
 
@@ -14,17 +16,23 @@ const FORMATIONS_TEXT = `BEVA propose les formations suivantes :
 4. Japonais
 5. Intelligence artificielle & Développement Web : outils et applications
 
-Chaque formation privilégie la pratique, les projets et l’accompagnement. Les cours comprennent généralement deux séances de deux heures par semaine, en journée ou en soirée selon la formation.`;
+Chaque formation privilégie la pratique, les projets et l’accompagnement. Les cours comprennent généralement deux séances de deux heures par semaine, en journée ou en soirée selon la formation.
+
+${CONVERSION_PROMPT}`;
 
 const TARIFS_TEXT = `Le tarif normal est de 180 000 FCFA, soit 60 000 FCFA par mois pendant 3 mois.
 
 Offre actuelle : les 100 premiers inscrits bénéficient d’une réduction de 50 %, soit 90 000 FCFA, payable en 3 tranches de 30 000 FCFA.
 
-Un 4e mois de révision est offert.`;
+Un 4e mois de révision est offert.
+
+${CONVERSION_PROMPT}`;
 
 const HORAIRES_TEXT = `Les cours sont proposés en journée, en soirée ou le week-end selon la formation et les places disponibles.
 
-Chaque formation comprend généralement deux séances de deux heures par semaine. Des cours en ligne sont également possibles pour certaines formations. Lors de la préinscription, vous pourrez indiquer le mode de cours et l’horaire qui vous conviennent.`;
+Chaque formation comprend généralement deux séances de deux heures par semaine. Des cours en ligne sont également possibles pour certaines formations. Lors de la préinscription, vous pourrez indiquer le mode de cours et l’horaire qui vous conviennent.
+
+${CONVERSION_PROMPT}`;
 
 const VISITE_TEXT = `Vous pouvez visiter BEVA du lundi au samedi, de 9 h à 21 h.
 
@@ -69,7 +77,9 @@ const AI_HUMAN_HANDOFF_TEXT = `Je transmets votre demande à l’équipe BEVA af
 
 const SCHOLARSHIP_ELIGIBLE_TEXT = `Après vérification, vous êtes éligible à l’offre réservée aux 100 premiers inscrits.
 
-Vous bénéficiez donc de 50 % de réduction : la formation revient à 90 000 FCFA au lieu de 180 000 FCFA, payable en trois tranches de 30 000 FCFA. Vous pouvez également réserver votre place avec 15 000 FCFA, déduits du premier mois.`;
+Vous bénéficiez donc de 50 % de réduction : la formation revient à 90 000 FCFA au lieu de 180 000 FCFA, payable en trois tranches de 30 000 FCFA. Vous pouvez également réserver votre place avec 15 000 FCFA, déduits du premier mois.
+
+${CONVERSION_PROMPT}`;
 
 const AI_HUMAN_SENTINEL = "#BEVA_HUMAIN#";
 const AI_ACTION_PREFIX = "ACTIONS:";
@@ -492,6 +502,62 @@ function isSimpleGreeting(value: string) {
     "cc",
     "coucou",
   ].includes(normalized);
+}
+
+function isSimpleAcknowledgement(value: string) {
+  const normalized = normalizeIntentText(value);
+  return [
+    "d accord",
+    "ok",
+    "okay",
+    "okk",
+    "compris",
+    "j ai compris",
+    "c est compris",
+    "merci",
+    "super",
+    "parfait",
+    "ca marche",
+    "tres bien",
+  ].includes(normalized);
+}
+
+function isAffirmativeReply(value: string) {
+  const normalized = normalizeIntentText(value);
+  return [
+    "oui",
+    "oui d accord",
+    "d accord",
+    "ok",
+    "okay",
+    "okk",
+    "allons y",
+    "je veux bien",
+    "c est bon",
+    "vas y",
+  ].includes(normalized);
+}
+
+function lastOutboundMenu(history: Array<Record<string, any>>) {
+  return history
+    .slice()
+    .reverse()
+    .find((item) => item.direction === "outbound" && item.raw_payload?.menu)
+    ?.raw_payload?.menu || null;
+}
+
+function menuCanLeadToRegistration(value: unknown) {
+  const menu = String(value || "");
+  return [
+    "formations",
+    "tarifs",
+    "horaires",
+    "bourse_eligible",
+    "reponse_ia_validee",
+    "formations_ia",
+    "tarifs_ia",
+    "horaires_ia",
+  ].includes(menu);
 }
 
 async function dailyAiLimitReached(supabase: any) {
@@ -1499,6 +1565,7 @@ Deno.serve(async (req: Request) => {
 
                   if (recentMessagesError) throw recentMessagesError;
                   const conversationHistory = (recentMessages || []).reverse();
+                  const previousMenu = lastOutboundMenu(conversationHistory);
                   const scholarshipFollowUpConfirmed = isScholarshipFollowUp(originalQuestion) &&
                     conversationHistory.some((item) =>
                       asksScholarshipEligibility(String(item.body || "")) ||
@@ -1587,6 +1654,25 @@ Deno.serve(async (req: Request) => {
                     awaitingPaymentProofUntil = new Date(Date.now() + 48 * 60 * 60 * 1000)
                       .toISOString();
                   } else if (
+                    (previousMenu === "proposition_inscription" ||
+                      menuCanLeadToRegistration(previousMenu)) &&
+                    isAffirmativeReply(originalQuestion)
+                  ) {
+                    sent = await sendRegistrationFlow(phone);
+                    outboundBody = "Ouverture du formulaire de préinscription BEVA";
+                    outboundType = "interactive_flow";
+                    menu = "inscription_flow_conversation";
+                    commercialStatus = "inscription_en_cours";
+                  } else if (
+                    menuCanLeadToRegistration(previousMenu) &&
+                    isSimpleAcknowledgement(originalQuestion)
+                  ) {
+                    sent = await sendDecisionActions(phone, ACKNOWLEDGEMENT_PROMPT);
+                    outboundBody = ACKNOWLEDGEMENT_PROMPT;
+                    outboundType = "interactive_button";
+                    menu = "proposition_inscription";
+                    commercialStatus = "interesse";
+                  } else if (
                     Deno.env.get("CLOUDFLARE_API_TOKEN") &&
                     Deno.env.get("CLOUDFLARE_ACCOUNT_ID")
                   ) {
@@ -1646,9 +1732,12 @@ Deno.serve(async (req: Request) => {
                         }
                       } else if (aiReply?.text && !aiReply.requiresHuman) {
                         aiModel = aiReply.model;
-                        sent = await sendText(phone, aiReply.text);
-                        outboundBody = aiReply.text;
+                        const guidedReply = `${aiReply.text}\n\n${CONVERSION_PROMPT}`;
+                        sent = await sendDecisionActions(phone, guidedReply);
+                        outboundBody = guidedReply;
+                        outboundType = "interactive_button";
                         menu = "reponse_ia_validee";
+                        commercialStatus = "interesse";
                       }
 
                       if (!sent || !outboundBody || !menu) {
@@ -1809,7 +1898,11 @@ export {
   asksScholarshipEligibility,
   detectTextIntents,
   extractAiDecision,
+  isAffirmativeReply,
+  isSimpleAcknowledgement,
   isScholarshipFollowUp,
+  lastOutboundMenu,
+  menuCanLeadToRegistration,
   selectRelevantKnowledge,
   textNeedsLiveCourseConfirmation,
   validateAiReply,
