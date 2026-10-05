@@ -77,6 +77,8 @@ const AI_HUMAN_HANDOFF_TEXT = `Je transmets votre demande à l’équipe BEVA af
 
 const VISIT_CONFIRMATION_TEXT = `C’est noté. Un membre de l’équipe BEVA va vérifier le jour et l’heure souhaités, puis confirmer votre visite ici sur WhatsApp dans quelques instants.`;
 
+const CERTIFICATE_TEXT = `Oui. À la fin de la formation, BEVA délivre un certificat de formation qui atteste de la formation suivie et des compétences acquises.`;
+
 const SCHOLARSHIP_ELIGIBLE_TEXT = `Après vérification, vous êtes éligible à l’offre réservée aux 100 premiers inscrits.
 
 Vous bénéficiez donc de 50 % de réduction : la formation revient à 90 000 FCFA au lieu de 180 000 FCFA, payable en trois tranches de 30 000 FCFA. Vous pouvez également réserver votre place avec 15 000 FCFA, déduits du premier mois.
@@ -367,6 +369,21 @@ function textNeedsLiveCourseConfirmation(value: string) {
   return mentionsCourse && mentionsLiveSituation;
 }
 
+function asksCertificateQuestion(value: string) {
+  const normalized = normalizeIntentText(value);
+  const mentionsCertificate = /\b(certificat|certification|attestation)\b/.test(normalized);
+  const asksAboutOfficialRecognition = /\b(reconnu|reconnue|reconnaissance|etat|diplome officiel)\b/.test(
+    normalized,
+  );
+  return mentionsCertificate && !asksAboutOfficialRecognition;
+}
+
+function asksOfficialCertificateRecognition(value: string) {
+  const normalized = normalizeIntentText(value);
+  return /\b(certificat|certification|attestation)\b/.test(normalized) &&
+    /\b(reconnu|reconnue|reconnaissance|etat|diplome officiel)\b/.test(normalized);
+}
+
 function asksScholarshipEligibility(value: string) {
   const normalized = normalizeIntentText(value);
   const mentionsScholarship = /\b(100 premiers|parmi les 100|bourse|boursier|boursiere|offre des 100|reduction de 50)\b/.test(
@@ -500,7 +517,7 @@ function detectTextIntents(value: string): TextIntent[] {
   }
 
   if (
-    /\b(quelles formations|quelle formation|liste des formations|formations disponibles|formations proposees|vous formez en quoi|vos formations)\b/.test(
+    /\b(quelles formations|liste des formations|formations disponibles|formations proposees|vous formez en quoi|vos formations)\b/.test(
       normalized,
     ) ||
     /^(formation|formations|cours|programme|programmes)$/.test(normalized)
@@ -796,7 +813,7 @@ function extractAiDecision(value: string) {
     "inscription",
     "visite",
   ]);
-  const match = value.match(/^\s*ACTIONS\s*:\s*([^\n\r]+)[\n\r]*/i);
+  const match = value.match(/\bACTIONS\s*:\s*([^\n\r.]+)[\n\r]*/i);
   if (!match) return { actions: [] as TextIntent[], text: value };
   const actions = match[1]
     .split(",")
@@ -805,8 +822,39 @@ function extractAiDecision(value: string) {
     .filter((item, index, values) => values.indexOf(item) === index);
   return {
     actions: /\b(aucune|none)\b/i.test(match[1]) ? [] as TextIntent[] : actions,
-    text: value.slice(match[0].length).trim(),
+    text: `${value.slice(0, match.index || 0)}\n${value.slice((match.index || 0) + match[0].length)}`
+      .trim(),
   };
+}
+
+function reconcileAiDecision(
+  question: string,
+  decision: { actions: TextIntent[]; text: string },
+) {
+  const direct = detectTextIntents(question).filter((intent) =>
+    ["formations", "tarifs", "horaires", "inscription", "visite"].includes(intent)
+  );
+  const actions = [...decision.actions];
+  for (const intent of direct) {
+    if (!actions.includes(intent)) actions.push(intent);
+  }
+
+  // Une expression d’intérêt seule n’autorise jamais l’ouverture du formulaire.
+  const normalized = normalizeIntentText(question);
+  const explicitRegistration = direct.includes("inscription");
+  const simpleInterest = /\b(interesse|interessee|interessant|aime|attire)\b/.test(normalized) &&
+    direct.length === 0;
+  const asksRecommendation = /\b(quelle formation|formation pour|me correspond|me conseillez|recommandez)\b/.test(
+    normalized,
+  ) && !/\b(liste|toutes|proposees|disponibles)\b/.test(normalized);
+  if (simpleInterest || asksRecommendation) {
+    actions.splice(0, actions.length);
+  } else if (!explicitRegistration) {
+    const index = actions.indexOf("inscription");
+    if (index >= 0) actions.splice(index, 1);
+  }
+
+  return { actions, text: decision.text };
 }
 
 function validateAiReply(value: string, question: string, settings: AiSettings) {
@@ -926,8 +974,8 @@ async function createBevaAiReply(
           ...aiConversationMessages(history).slice(-settings.max_history_messages),
           { role: "user", content: safeQuestion },
         ],
-        temperature: 0.2,
-        max_tokens: 800,
+        temperature: 0.15,
+        max_tokens: 1400,
       }),
       signal: controller.signal,
     });
@@ -956,7 +1004,10 @@ async function createBevaAiReply(
       return null;
     }
 
-    const decision = extractAiDecision(extractCloudflareText(data));
+    const decision = reconcileAiDecision(
+      safeQuestion,
+      extractAiDecision(extractCloudflareText(data)),
+    );
     const text = cleanAiReplyText(decision.text);
     const usage = extractCloudflareUsage(data);
     if (!decision.actions.length && !text) {
@@ -1669,6 +1720,18 @@ Deno.serve(async (req: Request) => {
                     menu = "visite_a_confirmer";
                     requiresHuman = true;
                     attentionReason = "visite_a_confirmer";
+                  } else if (asksCertificateQuestion(originalQuestion)) {
+                    sent = await sendDecisionActions(phone, CERTIFICATE_TEXT);
+                    outboundBody = CERTIFICATE_TEXT;
+                    outboundType = "interactive_button";
+                    menu = "certificat";
+                    commercialStatus = "interesse";
+                  } else if (asksOfficialCertificateRecognition(originalQuestion)) {
+                    sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
+                    outboundBody = AI_HUMAN_HANDOFF_TEXT;
+                    menu = "certificat_a_verifier";
+                    requiresHuman = true;
+                    attentionReason = "question_libre";
                   } else if (
                     asksScholarshipEligibility(originalQuestion) || scholarshipFollowUpConfirmed
                   ) {
