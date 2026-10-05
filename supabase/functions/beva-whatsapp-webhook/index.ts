@@ -99,8 +99,14 @@ Règles de rédaction :
 - Ne demande jamais de mot de passe, code secret, code OTP, numéro de carte bancaire ou pièce d’identité.
 
 Format obligatoire :
-- Si le message demande clairement d’afficher un parcours standard, réponds uniquement par une ligne « ${AI_ACTION_PREFIX} ... » avec une ou plusieurs valeurs parmi formations, tarifs, horaires, inscription et visite. Exemple : « ${AI_ACTION_PREFIX} horaires,inscription ».
-- Utilise le contexte pour comprendre une réponse courte comme « oui, je veux le faire », mais ne choisis une action que si l’intention est claire.
+- Interprète toujours le sens de la phrase entière et le contexte récent. Ne décide jamais à partir d’un mot isolé.
+- Pour les parcours standards, réponds uniquement par une ligne « ${AI_ACTION_PREFIX} ... » avec une ou plusieurs valeurs parmi formations, tarifs, horaires, inscription et visite.
+- Utilise « visite » pour les heures d’ouverture du centre, l’adresse, la localisation ou le moment où une personne peut venir à BEVA.
+- Utilise « horaires » uniquement pour les horaires, jours ou créneaux des cours et des formations.
+- Utilise « inscription » dès qu’une personne souhaite rejoindre, commencer ou suivre une formation. Si elle pose aussi une question, ajoute les deux actions utiles. Exemple : « ${AI_ACTION_PREFIX} horaires,inscription ».
+- Utilise « formations » pour connaître les formations proposées et « tarifs » pour les prix, la bourse ou les modalités générales de paiement.
+- Si plusieurs demandes sont présentes dans le même message, retourne toutes les actions nécessaires, dans l’ordre logique de la conversation.
+- Utilise le contexte pour comprendre les pronoms, les réponses courtes et les suites comme « d’accord », « et moi ? », « je veux le faire » ou « à quelle heure ? ».
 - Pour une question d’explication, écris « ${AI_ACTION_PREFIX} aucune » sur la première ligne, puis ta réponse sur les lignes suivantes.
 - Si la réponse dépend d’une information absente, actuelle, personnelle ou devant être vérifiée par un humain, réponds uniquement par ${AI_HUMAN_SENTINEL}. N’ajoute rien avant ou après.`;
 
@@ -1120,7 +1126,7 @@ async function dispatchInformationIntents(
   intents: TextIntent[],
   menuSuffix = "",
 ) {
-  const orderedInformation = (["formations", "tarifs", "horaires"] as TextIntent[])
+  const orderedInformation = (["formations", "tarifs", "horaires", "visite"] as TextIntent[])
     .filter((intent) => intents.includes(intent));
   const wantsRegistration = intents.includes("inscription");
   const records: OutboundRecord[] = [];
@@ -1129,12 +1135,13 @@ async function dispatchInformationIntents(
     formations: FORMATIONS_TEXT,
     tarifs: TARIFS_TEXT,
     horaires: HORAIRES_TEXT,
+    visite: VISITE_TEXT,
   };
 
   for (let index = 0; index < orderedInformation.length; index++) {
     const intent = orderedInformation[index];
     const isLastInformation = index === orderedInformation.length - 1;
-    const interactive = isLastInformation && !wantsRegistration;
+    const interactive = isLastInformation && !wantsRegistration && intent !== "visite";
     const body = content[intent];
     const sent = interactive
       ? await sendDecisionActions(to, body)
@@ -1642,30 +1649,6 @@ Deno.serve(async (req: Request) => {
                     menu = "conseiller_ia";
                     requiresHuman = true;
                     attentionReason = "question_libre";
-                  } else if (centerVisitQuestion) {
-                    sent = await sendText(phone, VISITE_TEXT);
-                    outboundBody = VISITE_TEXT;
-                    menu = "visite";
-                  } else if (textIntents.some((intent) =>
-                    ["formations", "tarifs", "horaires", "inscription"].includes(intent)
-                  )) {
-                    const dispatched = await dispatchInformationIntents(phone, textIntents);
-                    if (dispatched) {
-                      sent = dispatched.primary.sent;
-                      outboundBody = dispatched.primary.body;
-                      outboundType = dispatched.primary.messageType;
-                      menu = dispatched.primary.menu;
-                      additionalOutboundMessages = [
-                        ...additionalOutboundMessages,
-                        ...dispatched.additional,
-                      ];
-                    }
-                  } else if (textIntents.includes("visite")) {
-                    sent = await sendText(phone, VISITE_TEXT);
-                    outboundBody = VISITE_TEXT;
-                    menu = "visite";
-                    requiresHuman = true;
-                    attentionReason = "conseiller";
                   } else if (textIntents.includes("paiement_en_ligne")) {
                     sent = await sendText(phone, ONLINE_PAYMENT_TEXT);
                     outboundBody = ONLINE_PAYMENT_TEXT;
@@ -1692,83 +1675,105 @@ Deno.serve(async (req: Request) => {
                     outboundType = "interactive_button";
                     menu = "proposition_inscription";
                     commercialStatus = "interesse";
-                  } else if (
-                    Deno.env.get("CLOUDFLARE_API_TOKEN") &&
-                    Deno.env.get("CLOUDFLARE_ACCOUNT_ID")
-                  ) {
-                    if (await dailyAiLimitReached(supabase)) {
-                      sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
-                      outboundBody = AI_HUMAN_HANDOFF_TEXT;
-                      menu = "limite_ia";
-                      requiresHuman = true;
-                      attentionReason = "question_libre";
-                    } else {
-                      const aiConfiguration = await loadAiConfiguration(
+                  } else {
+                    const aiIsConfigured = Boolean(
+                      Deno.env.get("CLOUDFLARE_API_TOKEN") &&
+                        Deno.env.get("CLOUDFLARE_ACCOUNT_ID"),
+                    );
+                    const aiLimitReached = aiIsConfigured
+                      ? await dailyAiLimitReached(supabase)
+                      : true;
+                    const aiConfiguration = aiIsConfigured && !aiLimitReached
+                      ? await loadAiConfiguration(
                         supabase,
                         originalQuestion,
                         conversationHistory,
+                      )
+                      : null;
+                    const aiReply = aiConfiguration
+                      ? await createBevaAiReply(
+                        supabase,
+                        contact.id,
+                        message.id,
+                        originalQuestion,
+                        conversationHistory,
+                        aiConfiguration.settings,
+                        aiConfiguration.knowledge,
+                      )
+                      : null;
+
+                    if (aiReply?.actions?.length && !aiReply.requiresHuman) {
+                      aiModel = aiReply.model;
+                      aiIntents = aiReply.actions;
+                      aiIntent = aiIntents[0] || null;
+                      aiConfidence = 0.85;
+                      const dispatched = await dispatchInformationIntents(
+                        phone,
+                        aiIntents as TextIntent[],
+                        "_ia",
                       );
-                      const aiReply = aiConfiguration
-                        ? await createBevaAiReply(
-                          supabase,
-                          contact.id,
-                          message.id,
-                          originalQuestion,
-                          conversationHistory,
-                          aiConfiguration.settings,
-                          aiConfiguration.knowledge,
-                        )
-                        : null;
+                      if (dispatched) {
+                        sent = dispatched.primary.sent;
+                        outboundBody = dispatched.primary.body;
+                        outboundType = dispatched.primary.messageType;
+                        menu = dispatched.primary.menu;
+                        additionalOutboundMessages = [
+                          ...additionalOutboundMessages,
+                          ...dispatched.additional,
+                        ];
+                      }
+                    } else if (aiReply?.text && !aiReply.requiresHuman) {
+                      aiModel = aiReply.model;
+                      const guidedReply = `${aiReply.text}\n\n${CONVERSION_PROMPT}`;
+                      sent = await sendDecisionActions(phone, guidedReply);
+                      outboundBody = guidedReply;
+                      outboundType = "interactive_button";
+                      menu = "reponse_ia_validee";
+                      commercialStatus = "interesse";
+                    } else if (aiReply?.requiresHuman) {
+                      sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
+                      outboundBody = AI_HUMAN_HANDOFF_TEXT;
+                      menu = "reponse_ia_bloquee";
+                      requiresHuman = true;
+                      attentionReason = "question_libre";
+                    }
 
-                      if (aiReply?.actions?.length && !aiReply.requiresHuman) {
-                        aiModel = aiReply.model;
-                        aiIntents = aiReply.actions;
-                        aiIntent = aiIntents[0] || null;
-                        aiConfidence = 0.85;
-                        if (aiIntents.some((intent) =>
-                          ["formations", "tarifs", "horaires", "inscription"].includes(intent)
-                        )) {
-                          const dispatched = await dispatchInformationIntents(
-                            phone,
-                            aiIntents as TextIntent[],
-                            "_ia",
-                          );
-                          if (dispatched) {
-                            sent = dispatched.primary.sent;
-                            outboundBody = dispatched.primary.body;
-                            outboundType = dispatched.primary.messageType;
-                            menu = dispatched.primary.menu;
-                            additionalOutboundMessages = [
-                              ...additionalOutboundMessages,
-                              ...dispatched.additional,
-                            ];
-                          }
-                        } else if (aiIntents.includes("visite")) {
-                          sent = await sendText(phone, VISITE_TEXT);
-                          outboundBody = VISITE_TEXT;
-                          menu = "visite_ia";
-                          requiresHuman = true;
-                          attentionReason = "conseiller";
+                    // Les règles lexicales ne décident plus en premier. Elles servent
+                    // uniquement de secours si Qwen est indisponible ou si la limite est atteinte.
+                    if (!sent || !outboundBody || !menu) {
+                      if (centerVisitQuestion || textIntents.includes("visite")) {
+                        sent = await sendText(phone, VISITE_TEXT);
+                        outboundBody = VISITE_TEXT;
+                        menu = "visite_secours";
+                      } else if (textIntents.some((intent) =>
+                        ["formations", "tarifs", "horaires", "inscription"].includes(intent)
+                      )) {
+                        const dispatched = await dispatchInformationIntents(
+                          phone,
+                          textIntents,
+                          "_secours",
+                        );
+                        if (dispatched) {
+                          sent = dispatched.primary.sent;
+                          outboundBody = dispatched.primary.body;
+                          outboundType = dispatched.primary.messageType;
+                          menu = dispatched.primary.menu;
+                          additionalOutboundMessages = [
+                            ...additionalOutboundMessages,
+                            ...dispatched.additional,
+                          ];
                         }
-                      } else if (aiReply?.text && !aiReply.requiresHuman) {
-                        aiModel = aiReply.model;
-                        const guidedReply = `${aiReply.text}\n\n${CONVERSION_PROMPT}`;
-                        sent = await sendDecisionActions(phone, guidedReply);
-                        outboundBody = guidedReply;
-                        outboundType = "interactive_button";
-                        menu = "reponse_ia_validee";
-                        commercialStatus = "interesse";
                       }
+                    }
 
-                      if (!sent || !outboundBody || !menu) {
-                        const fallbackText = aiConfiguration?.settings.fallback_text ||
-                          AI_HUMAN_HANDOFF_TEXT;
-                        sent = await sendText(phone, fallbackText);
-                        outboundBody = fallbackText;
-                        menu = aiReply ? "reponse_ia_bloquee" : "erreur_ia";
-                        requiresHuman = true;
-                        attentionReason = "question_libre";
-                      }
+                    if (!sent || !outboundBody || !menu) {
+                      const fallbackText = aiConfiguration?.settings.fallback_text ||
+                        AI_HUMAN_HANDOFF_TEXT;
+                      sent = await sendText(phone, fallbackText);
+                      outboundBody = fallbackText;
+                      menu = aiLimitReached ? "limite_ia" : "erreur_ia";
+                      requiresHuman = true;
+                      attentionReason = "question_libre";
                     }
                   }
                   }
