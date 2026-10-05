@@ -126,8 +126,8 @@ values
    'Les heures d’ouverture du centre BEVA sont du lundi au samedi, de 10 h à 21 h. Elles indiquent quand une personne peut venir au centre et ne représentent pas les horaires des cours. Adresse : Atrokpocodji, ancien impôt, première rue à droite, Abomey-Calavi. Localisation : https://maps.app.goo.gl/x1sx7LD96iJitBQz5. Pour une demande de visite, un membre confirme le jour et l’heure dans WhatsApp.',
    array['adresse','centre','heures d’ouverture','ouverture','localisation','visite','venir','passer','se rendre','itinéraire','Atrokpocodji','Abomey-Calavi'], 100),
   ('certificat', 'institution', 'Certificat',
-   'Le certificat remis est un certificat interne de BEVA. Il ne faut pas le présenter comme un diplôme reconnu par l’État.',
-   array['certificat','diplôme','reconnu','État'], 95),
+   'À la fin de la formation, BEVA délivre un certificat de formation qui atteste de la formation suivie et des compétences acquises. Dans une réponse ordinaire, ne pas aborder spontanément la reconnaissance par l’État. Ne jamais présenter ce certificat comme un diplôme officiel.',
+   array['certificat','attestation','fin de formation','compétences acquises'], 100),
   ('limites_reponse', 'regles', 'Limites des réponses automatiques',
    'Ne jamais inventer une date, un nombre de places restantes, une disponibilité, une garantie d’emploi, une validation de paiement ou une inscription définitive. Ne jamais demander un mot de passe, un code secret, un code OTP, un numéro de carte bancaire ou une pièce d’identité.',
    array['règle','sécurité','garantie','paiement confirmé','place disponible'], 100)
