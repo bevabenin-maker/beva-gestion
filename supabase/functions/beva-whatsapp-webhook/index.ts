@@ -348,9 +348,13 @@ function textNeedsHumanReview(value: string) {
 
   return [
     /j.?ai (deja )?paye/,
+    /\bg (deja )?paye\b/,
+    /\b(j ai|g) (deja )?(regle|verse)\b/,
     /paiement (effectue|debite|refuse|bloque)/,
     /confirmer (mon|le) paiement/,
     /probleme de paiement/,
+    /\b(deja inscrit|deja inscrite)\b.{0,50}\b(reste|solde|payer|paye)\b/,
+    /\b(combien|quel montant)\b.{0,30}\b(reste|solde)\b.{0,20}\b(payer|paye)?\b/,
     /rembours/,
     /reclamation/,
     /plainte/,
@@ -376,6 +380,25 @@ function asksCertificateQuestion(value: string) {
     normalized,
   );
   return mentionsCertificate && !asksAboutOfficialRecognition;
+}
+
+function certificateNeedsHumanReview(value: string) {
+  const normalized = normalizeIntentText(value);
+  const mentionsCertificate = /\b(certificat|certification|attestation)\b/.test(normalized);
+  const personalStatus = /\b(mon|ma|mes)\b.{0,25}\b(certificat|certification|attestation)\b/.test(
+    normalized,
+  ) || /\b(certificat|certification|attestation)\b.{0,35}\b(pret|prete|disponible|retirer|recuperer|prendre|recevoir maintenant)\b/.test(
+    normalized,
+  );
+  return mentionsCertificate && personalStatus;
+}
+
+function asksTrainingOutcomeDocument(value: string) {
+  const normalized = normalizeIntentText(value);
+  return /\b(a la fin|fin de la formation|apres la formation)\b/.test(normalized) &&
+    /\b(on (nous )?donne quoi|je recois quoi|quel document|quelle attestation|quel certificat)\b/.test(
+      normalized,
+    );
 }
 
 function asksOfficialCertificateRecognition(value: string) {
@@ -438,10 +461,13 @@ function asksCenterVisitOrOpeningHours(value: string) {
   const asksWhenOpen = /\b(heure|heures|horaire|horaires|quand)\b/.test(normalized) &&
     /\b(ouvert|ouverte|ouverts|ouverture|ferme|fermee|fermeture)\b/.test(normalized);
   const asksWhenToCome = /\b(me rendre|se rendre|venir|passer|visiter|aller)\b/.test(normalized) &&
-    /\b(heure|heures|horaire|horaires|quand|matin|midi|soir|jour)\b/.test(normalized);
+    /\b(heure|heures|horaire|horaires|quand|matin|midi|minuit|soir|jour|dimanche)\b/.test(normalized);
   const asksLocation = /\b(adresse|localisation|itineraire|ou etes vous)\b/.test(normalized);
+  const smsVisitQuestion = /\b(kel|quel|quelle|a quelle|vers quelle)\b.{0,15}\b(heur|heure|heures)\b/.test(
+    normalized,
+  ) && /\b(beva|centre|laba|la bas|pass|passe|venir|aller)\b/.test(normalized);
 
-  return asksWhenOpen || asksLocation || (mentionsBevaPlace && asksWhenToCome);
+  return asksWhenOpen || asksLocation || smsVisitQuestion || (mentionsBevaPlace && asksWhenToCome);
 }
 
 function proposesVisitSchedule(value: string, previousMenu: string | null) {
@@ -454,7 +480,7 @@ function proposesVisitSchedule(value: string, previousMenu: string | null) {
     normalized,
   );
   const suppliesMoment = /\b([01]?\d|2[0-3])\s*(h|heure|heures)\b/.test(normalized) ||
-    /\b(aujourd hui|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|matin|midi|soir)\b/.test(
+    /\b(aujourd hui|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|matin|midi|minuit|soir)\b/.test(
       normalized,
     );
 
@@ -464,6 +490,9 @@ function proposesVisitSchedule(value: string, previousMenu: string | null) {
 function detectTextIntents(value: string): TextIntent[] {
   const normalized = normalizeIntentText(value);
   const centerVisitQuestion = asksCenterVisitOrOpeningHours(value);
+  const deniesRegistration = /\b(je ne veux pas|je veux pas|je ne souhaite pas|pas maintenant|pas encore)\b.{0,45}\b(m inscrire|inscrire|inscription)\b/.test(
+    normalized,
+  );
   const intents: TextIntent[] = [];
 
   const add = (intent: TextIntent) => {
@@ -495,24 +524,27 @@ function detectTextIntents(value: string): TextIntent[] {
 
   if (
     !centerVisitQuestion &&
-    /\b(horaire|horaires|horraire|horraires|heure|heures|creneau|creneaux|emploi du temps|journee|soiree|week end|weekend|jours de cours|planning)\b/.test(
+    /\b(horair|horaire|horaires|horraire|horraires|heure|heures|creneau|creneaux|emploi du temps|journee|soiree|week end|weekend|jours de cours|planning)\b/.test(
       normalized,
     )
   ) {
     add("horaires");
   }
 
-  if (
+  if (!deniesRegistration && (
     /\b(m inscrire|s inscrire|inscription|preinscription|reserver ma place|rejoindre beva|integrer beva)\b/.test(
       normalized,
     ) ||
-    /\b(je veux|je souhaite|je voudrais|j aimerais)\s+(suivre|faire|commencer|integrer|rejoindre)\b/.test(
+    /\b(je veux|je souhaite|je voudrais|j aimerais)\s+(suivre|commencer|integrer|rejoindre)\b/.test(
+      normalized,
+    ) ||
+    /\b(je veux|je souhaite|je voudrais|j aimerais)\s+faire\s+(la\s+|le\s+|du\s+|de\s+la\s+)?(formation|cours|graphisme|montage|anglais|japonais|ia|intelligence artificielle)\b/.test(
       normalized,
     ) ||
     /\b(rejoindre|integrer)\s+(la|une)\s+(prochaine\s+)?(classe|rentree|session)\b/.test(
       normalized,
     )
-  ) {
+  )) {
     add("inscription");
   }
 
@@ -844,12 +876,15 @@ function reconcileAiDecision(
   const explicitRegistration = direct.includes("inscription");
   const simpleInterest = /\b(interesse|interessee|interessant|aime|attire)\b/.test(normalized) &&
     direct.length === 0;
-  const asksRecommendation = /\b(quelle formation|formation pour|me correspond|me conseillez|recommandez)\b/.test(
+  const asksRecommendation = /\b(quelle formation|kel formation|formation pour|me correspond|me conseillez|recommandez)\b/.test(
     normalized,
   ) && !/\b(liste|toutes|proposees|disponibles)\b/.test(normalized);
+  const deniesRegistration = /\b(je ne veux pas|je veux pas|je ne souhaite pas|pas maintenant|pas encore)\b.{0,45}\b(m inscrire|inscrire|inscription)\b/.test(
+    normalized,
+  );
   if (simpleInterest || asksRecommendation) {
     actions.splice(0, actions.length);
-  } else if (!explicitRegistration) {
+  } else if (!explicitRegistration || deniesRegistration) {
     const index = actions.indexOf("inscription");
     if (index >= 0) actions.splice(index, 1);
   }
@@ -877,6 +912,9 @@ function validateAiReply(value: string, question: string, settings: AiSettings) 
   }
   if (/\b(paiement (est|a ete) confirme|inscription (est|a ete) confirmee|vous etes definitivement inscrit)\b/.test(normalized)) {
     return block("unauthorized_confirmation");
+  }
+  if (/\b(ne constitue pas un diplome|n est pas un diplome|diplome officiel|reconnu par l etat|reconnaissance par l etat)\b/.test(normalized)) {
+    return block("certificate_status_not_for_automatic_reply");
   }
   if (/\*880\*41\*226927|chado 229|momopay/.test(normalized) &&
     !/\b(paiement|payer|momo|mobile money|justificatif|recu)\b/.test(normalizedQuestion)) {
@@ -1720,7 +1758,16 @@ Deno.serve(async (req: Request) => {
                     menu = "visite_a_confirmer";
                     requiresHuman = true;
                     attentionReason = "visite_a_confirmer";
-                  } else if (asksCertificateQuestion(originalQuestion)) {
+                  } else if (certificateNeedsHumanReview(originalQuestion)) {
+                    sent = await sendText(phone, AI_HUMAN_HANDOFF_TEXT);
+                    outboundBody = AI_HUMAN_HANDOFF_TEXT;
+                    menu = "certificat_a_verifier";
+                    requiresHuman = true;
+                    attentionReason = "question_libre";
+                  } else if (
+                    asksCertificateQuestion(originalQuestion) ||
+                    asksTrainingOutcomeDocument(originalQuestion)
+                  ) {
                     sent = await sendDecisionActions(phone, CERTIFICATE_TEXT);
                     outboundBody = CERTIFICATE_TEXT;
                     outboundType = "interactive_button";
