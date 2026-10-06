@@ -470,6 +470,29 @@ function asksCenterVisitOrOpeningHours(value: string) {
   return asksWhenOpen || asksLocation || smsVisitQuestion || (mentionsBevaPlace && asksWhenToCome);
 }
 
+function answerOpeningAtProposedTime(value: string) {
+  const normalized = normalizeIntentText(value);
+  const asksIfOpen = /\b(ouvert|ouverte|ouverts|ouverture|ferme|fermee|fermeture)\b/.test(
+    normalized,
+  );
+  if (!asksIfOpen || !/\b(beva|centre|local|locaux)\b/.test(normalized)) return null;
+
+  const hourMatch = normalized.match(/\b([01]?\d|2[0-3])\s*(?:h|heure|heures)\b/);
+  if (!hourMatch) return null;
+  const hour = Number(hourMatch[1]);
+  const displayHour = `${hour} h`;
+
+  if (/\bdimanche\b/.test(normalized)) {
+    return `BEVA est fermé le dimanche. Le centre est ouvert du lundi au samedi, de 10 h à 21 h.`;
+  }
+
+  if (hour >= 10 && hour < 21) {
+    return `Oui. BEVA est ouvert de 10 h à 21 h, du lundi au samedi. Vous pouvez donc venir à ${displayHour}.`;
+  }
+
+  return `Non. BEVA n’est pas ouvert à ${displayHour}. Le centre est ouvert du lundi au samedi, de 10 h à 21 h.`;
+}
+
 function proposesVisitSchedule(value: string, previousMenu: string | null) {
   const normalized = normalizeIntentText(value);
   const followsVisitConversation = String(previousMenu || "").startsWith("visite");
@@ -1752,6 +1775,11 @@ Deno.serve(async (req: Request) => {
                     menu = "organisation_cours_a_verifier";
                     requiresHuman = true;
                     attentionReason = "question_libre";
+                  } else if (answerOpeningAtProposedTime(originalQuestion)) {
+                    const openingAnswer = answerOpeningAtProposedTime(originalQuestion)!;
+                    sent = await sendText(phone, openingAnswer);
+                    outboundBody = openingAnswer;
+                    menu = "ouverture_visite";
                   } else if (proposesVisitSchedule(originalQuestion, previousMenu)) {
                     sent = await sendText(phone, VISIT_CONFIRMATION_TEXT);
                     outboundBody = VISIT_CONFIRMATION_TEXT;
@@ -2064,6 +2092,7 @@ Deno.serve(async (req: Request) => {
 // Exports purs pour les tests de politique conversationnelle. Ils n’exposent
 // aucun secret et ne changent pas le point d’entrée du webhook Supabase.
 export {
+  answerOpeningAtProposedTime,
   asksCenterVisitOrOpeningHours,
   asksScholarshipEligibility,
   detectTextIntents,
