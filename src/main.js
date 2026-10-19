@@ -624,7 +624,6 @@ function intakePanel() {
 
 function bindShell() {
   bindMobileDisclosures()
-  bindWhatsappControls()
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)))
   document.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut())
   document.querySelector('#add-student-top').addEventListener('click', newStudentModal)
