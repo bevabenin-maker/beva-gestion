@@ -51,6 +51,9 @@ export function buildViewModel(data, intakeId) {
   const expected = activeFinancial.reduce((sum, item) => sum + item.due, 0)
   const collected = payments.filter(payment => !payment.cancelled_at).reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const remaining = activeFinancial.reduce((sum, item) => sum + item.remaining, 0)
+  const collectionEnrollments = enrollments.filter(enrollment => enrollment.formation_id && ['inscrit', 'termine'].includes(enrollment.status))
+  const collectionExpected = collectionEnrollments.reduce((sum, enrollment) => sum + Number(enrollment.agreed_fee ?? feeFor(Boolean(enrollment.scholarship_status))), 0)
+  const collectionRate = collectionExpected ? collected / collectionExpected * 100 : 0
   const formationCounts = data.formations.map(formation => ({
     formation,
     count: activeEnrollments.filter(enrollment => enrollment.formation_id === formation.id).length
@@ -68,6 +71,8 @@ export function buildViewModel(data, intakeId) {
     expected,
     collected,
     remaining,
+    collectionExpected,
+    collectionRate,
     formationCounts,
     unclassified: students.filter(student => !classifiedIds.has(student.id)).length
   }

@@ -1,0 +1,45 @@
+import { displayCode, feeFor, money, paymentMethodLabel, paymentMonthLabel, studentName } from '@/lib/business'
+
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]))
+const receiptAsset = file => new URL(`${import.meta.env.BASE_URL}brand/${file}`, window.location.href).href
+
+export function receiptNumber(payment) {
+  return `BEVA-${new Date(payment.paid_at).getFullYear()}-${String(payment.id || '').replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+export function receiptHtml(payment, data) {
+  const enrollment = data.enrollments.find(item => item.id === payment.enrollment_id)
+  const student = enrollment && data.students.find(item => item.id === enrollment.student_id)
+  const formation = enrollment
+    ? data.formations.find(item => item.id === enrollment.formation_id)
+    : data.formations.find(item => item.id === payment.pending_formation_id)
+  const previousPaid = data.payments
+    .filter(item => item.enrollment_id === enrollment?.id && item.id !== payment.id && !item.cancelled_at && new Date(item.paid_at) <= new Date(payment.paid_at))
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const total = enrollment ? Number(enrollment.agreed_fee ?? feeFor(Boolean(enrollment.scholarship_status))) : 0
+  const remaining = Math.max(0, total - previousPaid - Number(payment.amount || 0))
+  const pending = payment.payment_context === 'pending'
+  const cancelled = Boolean(payment.cancelled_at)
+  const payerName = pending ? `${payment.pending_last_name || ''} ${payment.pending_first_name || ''}`.trim() : studentName(student)
+  const dossier = pending ? 'En attente d’affectation' : displayCode(enrollment?.dossier_code)
+  const tariff = payment.pending_scholarship_status || enrollment?.scholarship_status ? 'Boursier' : 'Standard'
+  const description = pending ? 'Paiement en attente d’affectation' : `${paymentMonthLabel(payment.billing_month)}${payment.installment ? ` · Tranche ${payment.installment}` : ''}`
+  const totals = cancelled
+    ? `<section class="totals"><div class="total-row remaining"><span>Statut</span><b>VERSEMENT ANNULÉ — non comptabilisé</b></div><div class="total-row"><span>Motif</span><b>${escapeHtml(payment.cancellation_reason || 'Non précisé')}</b></div></section>`
+    : pending
+      ? '<section class="totals"><div class="total-row"><span>Situation</span><b>Paiement conservé en attente d’affectation</b></div></section>'
+      : `<section class="totals"><div class="total-row"><span>Coût total de la formation</span><b>${money(total)}</b></div><div class="total-row"><span>Total payé après ce versement</span><b>${money(total - remaining)}</b></div><div class="total-row remaining"><span>Reste à payer après ce versement</span><b>${money(remaining)}</b></div></section>`
+
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${cancelled ? 'Annulation' : 'Reçu'} ${escapeHtml(receiptNumber(payment))}</title><style>
+  *{box-sizing:border-box}body{margin:0;background:#edf2f8;font-family:Arial,Helvetica,sans-serif;color:#14243a}.toolbar{position:sticky;top:0;z-index:2;display:flex;justify-content:center;padding:14px;background:#071a33}.toolbar button{border:0;border-radius:8px;padding:11px 18px;background:#d4af37;color:#071a33;font-weight:800;cursor:pointer}.receipt{position:relative;width:210mm;min-height:297mm;margin:24px auto;padding:17mm 16mm 13mm;background:white;box-shadow:0 2px 18px #60738d55}.top{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;border-bottom:5px solid #0b3d91;padding-bottom:12px}.logo{display:block;width:205px;max-width:100%;height:auto}.receipt-title{text-align:right;color:#0b3d91}.receipt-title h1{margin:0 0 8px;font-size:23px}.receipt-title p{margin:0;color:#344a67;font-size:12px}.receipt-number{display:inline-block;margin-top:8px;padding:7px 10px;background:#e8f1fb;color:#0b3d91;font-size:12px;font-weight:800}.bar{margin-top:15px;padding:7px 10px;color:white;background:#0b3d91;font-size:12px;font-weight:800}.info{display:grid;grid-template-columns:1fr 1fr;border:1px solid #cbd7e5;border-top:0}.field{display:grid;grid-template-columns:128px 1fr;gap:8px;min-height:35px;padding:9px 10px;border-top:1px solid #d6e0eb;font-size:12px}.field:nth-child(odd){border-right:1px solid #d6e0eb}.field b{color:#405574}.field strong{color:#102c50}.payment-box{margin-top:20px;border:1px solid #b9d8c5}.payment-box h2{margin:0;padding:8px 10px;color:#fff;background:#176b42;font-size:12px;text-align:center}.payment-row{display:grid;grid-template-columns:1.4fr .75fr .75fr 1fr;min-height:40px}.payment-row>*{padding:11px 9px;border-right:1px solid #c7dfd0;font-size:12px}.payment-row>*:last-child{border:0}.payment-head{color:white;background:#17477e;font-weight:800}.payment-detail{background:#dcf5e8}.payment-detail strong{color:#176b42}.amount{display:flex;align-items:center;justify-content:space-between;margin-top:19px;padding:10px 13px;color:white;background:#0b3d91;font-size:13px;font-weight:800}.amount b{padding:4px 15px;color:#0b3d91;background:#fff7df;font-size:22px}.totals{margin-top:20px;border:1px solid #cbd7e5}.total-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d6e0eb;font-size:12px}.total-row:last-child{border:0}.total-row b{color:#0b3d91}.total-row.remaining{background:#fff0ef}.total-row.remaining b{color:#b42318}.notice{margin-top:19px;padding:7px 10px;color:white;background:#0b3d91;text-align:center;font-size:10px;font-weight:700}.stamp-wrap{margin-top:21px;text-align:center}.stamp{width:120px;height:auto}.signature{margin-top:3px;color:#405574;font-size:11px}.contact{margin-top:14px;color:#61738a;font-size:10px;text-align:center}@page{size:A4;margin:0}@media print{body{background:white}.toolbar{display:none}.receipt{width:210mm;min-height:297mm;margin:0;box-shadow:none}}@media(max-width:760px){.receipt{width:100%;min-height:0;margin:0;padding:22px 16px}.top{grid-template-columns:1fr}.receipt-title{text-align:left}.payment-row{grid-template-columns:1fr 1fr}.info{grid-template-columns:1fr}.field{grid-template-columns:100px 1fr}.field:nth-child(odd){border-right:0}.amount{align-items:flex-start;gap:10px}.amount b{font-size:17px}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Enregistrer / imprimer le PDF</button></div><main class="receipt"><section class="top"><img class="logo" src="${receiptAsset('beva-logo.png')}" alt="BEVA"><div class="receipt-title"><h1>${cancelled ? 'ANNULATION DE VERSEMENT' : 'REÇU DE PAIEMENT'}</h1><p>Date : <b>${new Date(payment.paid_at).toLocaleDateString('fr-FR')}</b></p><div class="receipt-number">N° ${escapeHtml(receiptNumber(payment))}</div></div></section><div class="bar">INFORMATIONS DE L'ÉTUDIANT(E)</div><section class="info"><div class="field"><b>Nom et prénom</b><strong>${escapeHtml(payerName)}</strong></div><div class="field"><b>N° de dossier</b><strong>${escapeHtml(dossier)}</strong></div><div class="field"><b>Formation</b><strong>${escapeHtml(formation?.name || 'Non précisée')}</strong></div><div class="field"><b>Statut tarifaire</b><strong>${tariff}</strong></div></section><section class="payment-box"><h2>DÉTAIL DU VERSEMENT</h2><div class="payment-row payment-head"><b>Description</b><b>Montant reçu</b><b>Mode</b><b>Référence</b></div><div class="payment-row payment-detail"><strong>${escapeHtml(description)}</strong><strong>${money(payment.amount)}</strong><span>${escapeHtml(paymentMethodLabel(payment.method))}</span><span>${escapeHtml(payment.reference || receiptNumber(payment))}</span></div></section><div class="amount"><span>MONTANT DU VERSEMENT (FCFA)</span><b>${money(payment.amount)}</b></div>${totals}<p class="notice">${cancelled ? 'Ce document confirme l’annulation du versement indiqué.' : 'Ce reçu tient lieu de preuve de paiement. Conservez-le précieusement.'} — BEVA, Abomey-Calavi, Bénin</p><div class="stamp-wrap"><img class="stamp" src="${receiptAsset('beva-stamp.png')}" alt="Cachet BEVA"><div class="signature">La Direction</div></div><p class="contact">BEVA — Abomey-Calavi, Bénin</p></main></body></html>`
+}
+
+export function openReceipt(payment, data, showToast = () => {}) {
+  if (!payment) return showToast('Reçu introuvable.', true)
+  const receipt = window.open('about:blank', '_blank')
+  if (!receipt) return showToast('Autorisez les fenêtres surgissantes pour ouvrir le reçu.', true)
+  receipt.document.write(receiptHtml(payment, data))
+  receipt.document.close()
+  try { receipt.opener = null } catch { /* Le reçu reste indépendant de l’application. */ }
+}

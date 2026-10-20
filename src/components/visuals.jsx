@@ -19,7 +19,11 @@ export function FormationOrbit({ items, selected, onSelect }) {
   const palette = ['orbit-blue','orbit-teal','orbit-violet','orbit-amber','orbit-coral']
   return <div className="formation-orbit" aria-label="Répartition des élèves par formation">
     <motion.button layout className={cn('orbit-core', selected === 'all' && 'selected')} onClick={() => onSelect('all')} type="button"><strong>{items.reduce((sum,item)=>sum+item.count,0)}</strong><span>Dossiers actifs</span></motion.button>
-    {items.slice(0,5).map((item,index)=><motion.button layout key={item.formation.id} className={cn('orbit-node',palette[index],selected===item.formation.id&&'selected')} data-index={index} onClick={()=>onSelect(item.formation.id)} type="button" whileTap={{scale:.96}}><strong>{item.count}</strong><span>{item.formation.name}</span></motion.button>)}
+    {items.slice(0,5).map((item,index)=>{
+      const name=item.formation.name
+      const shortName=/intelligence artificielle.*d[eé]veloppement web/i.test(name)?'IA & Web':name
+      return <motion.button layout key={item.formation.id} className={cn('orbit-node',palette[index],selected===item.formation.id&&'selected')} data-index={index} onClick={()=>onSelect(item.formation.id)} type="button" whileTap={{scale:.96}} title={name} aria-label={`${name} : ${item.count} élève${item.count>1?'s':''}`}><strong>{item.count}</strong><span>{shortName}</span></motion.button>
+    })}
   </div>
 }
 
