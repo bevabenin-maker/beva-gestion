@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, CalendarDays, Check, ChevronDown, CircleDollarSign, FolderCog, Info, Mail, NotebookPen, Phone, Plus, ReceiptText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { ageOf, dateLabel, dateTimeLabel, displayCode, enrollmentStatusLabel, feeFor, financialStatus, initials, money, studentName, studentStatusLabel } from '@/lib/business'
+import { ageOf, dateLabel, dateTimeLabel, displayCode, enrollmentStatusLabel, feeFor, financialStatus, initials, money, paymentMethodLabel, studentName, studentStatusLabel } from '@/lib/business'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Field, Input, Select, Textarea } from '@/components/ui/field'
