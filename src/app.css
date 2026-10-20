@@ -282,3 +282,29 @@ html.dark body{background:#07111f}
 @media(max-width:720px){.history-cloud>header{align-items:flex-start}.history-head-actions{align-items:flex-end;flex-direction:column}.history-payment-main{grid-template-columns:34px minmax(0,1fr) auto}.history-payment-main>svg{display:none}.intake-edit-form{margin-inline:14px}.finance-breakdown strong{font-size:12px}}
 
 @media(max-width:720px){.sidebar-brand>div:nth-child(2),.sidebar-label,.sidebar-v2 nav button span,.staff-identity,.sidebar-logout span{display:block}.sidebar-foot{right:15px;left:15px}.sidebar-account{grid-template-columns:34px minmax(0,1fr);justify-items:stretch;padding:10px}.sidebar-logout{grid-column:1/-1;width:100%;padding:0 8px}}
+
+/* Receipt viewer, complete dark login and lighter rendering path. */
+.finance-cockpit{grid-template-columns:minmax(0,1fr)}
+.receipt-viewer-sheet{max-width:920px!important;overflow:hidden!important}
+.receipt-frame{display:block;width:100%;height:calc(100dvh - 76px);border:0;background:#edf2f8}
+.loading-screen{min-height:100vh;display:grid;place-items:center;color:#172438;background:#f4f2ed}
+.loading-screen span{color:#68798d;font-size:12px}.loading-track{width:128px;height:4px;overflow:hidden;border-radius:99px;background:#dfe4eb}.loading-track i{display:block;width:50%;height:100%;border-radius:inherit;background:#286fe3}
+.section-loader{min-height:330px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.section-loader i{height:190px;border:1px solid #e0ddd6;border-radius:24px;background:linear-gradient(105deg,#efede8 20%,#faf8f4 34%,#efede8 48%);background-size:220% 100%;animation:section-shimmer 1.1s linear infinite}@keyframes section-shimmer{to{background-position-x:-220%}}
+.login-form-wrap{position:relative}.login-theme-switch{position:absolute;top:24px;right:24px;z-index:2}
+.beva-shell,.beva-workspace,.topbar-v2,.metric-tile,.universe-card,.pulse-card,.student-card-v2,.payment-card-v2,.finance-satellite,.history-cloud,.formation-card-v2,.analytics-result,.analytics-capabilities>div,.config-formation,.intake-config-card,.config-current,.mobile-nav-v2{transition-duration:.14s}
+
+.dark .login-form-wrap{background:#0b1727}.dark .login-form h2{color:#f0f5fb}.dark .login-form>p{color:#91a4bb}.dark .login-form label{color:#c8d5e4}.dark .login-form input{border-color:#2b4059;color:#edf4fb;background:#101e31}.dark .login-form input::placeholder{color:#657991}.dark .login-form input:focus{border-color:#5a88c8;box-shadow:0 0 0 4px rgba(90,136,200,.14)}.dark .login-form input:-webkit-autofill,.dark .login-form input:-webkit-autofill:hover,.dark .login-form input:-webkit-autofill:focus{-webkit-text-fill-color:#edf4fb;box-shadow:0 0 0 1000px #101e31 inset;caret-color:#edf4fb}
+.dark .loading-screen{color:#edf4fb;background:#07111f}.dark .loading-screen span{color:#91a4bb}.dark .loading-track{background:#23364d}.dark .loading-track i{background:#76a8ff}
+.dark .section-loader i{border-color:#263950;background:linear-gradient(105deg,#0e1b2c 20%,#17283d 34%,#0e1b2c 48%);background-size:220% 100%}
+.dark .receipt-frame{background:#0b1727}
+.dark .tone-blue .metric-icon{color:#9bc0ff;background:#173257}.dark .tone-teal .metric-icon{color:#83dfd2;background:#143d3a}.dark .tone-violet .metric-icon{color:#c1b1ff;background:#302858}.dark .tone-amber .metric-icon{color:#f4ca79;background:#493719}
+.dark .student-card-foot i,.dark .config-formation-icon,.dark .intake-config-symbol{color:#9fc2ff;background:#1b3553}.dark .profile-facts svg,.dark .config-sheet-grid svg,.dark .intake-config-detail svg{color:#8fb8f7}.dark .sidebar-mobile-close{color:#d7e4f2;background:#172a42}
+
+@media(max-width:720px){
+  .topbar-v2,.mobile-nav-v2{backdrop-filter:none}
+  .mobile-overlay{backdrop-filter:none}
+  .receipt-viewer-sheet{top:0!important;max-height:100dvh!important;border-radius:0!important}
+  .receipt-frame{height:calc(100dvh - 73px)}
+  .login-theme-switch{top:18px;right:18px}
+  .section-loader{grid-template-columns:1fr;min-height:520px}.section-loader i{height:150px}
+}
