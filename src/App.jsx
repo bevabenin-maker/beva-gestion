@@ -83,7 +83,7 @@ export default function App() {
   if (error && !data) return <ErrorScreen error={error} />
   if (!data || !view) return <LoadingScreen />
 
-  const shared = { data, view, intakeId, showToast }
+  const shared = { data, view, intakeId, showToast, mutate }
   return <MotionConfig reducedMotion="user" transition={{ type: 'spring', stiffness: 390, damping: 36 }}><div className={cn('beva-shell',theme==='dark'&&'dark')}>
     <Sidebar section={section} onSection={value => { setSection(value); setMobileMenu(false) }} staff={data.staff} onLogout={() => supabase.auth.signOut()} className={mobileMenu ? 'mobile-open' : ''} />
     <div className="beva-workspace"><Topbar section={section} intakes={data.intakes} intakeId={intakeId} setIntakeId={setIntakeId} onNewStudent={() => setNewStudentOpen(true)} onMenu={() => setMobileMenu(value => !value)} theme={theme} onToggleTheme={()=>setTheme(value=>value==='dark'?'light':'dark')} /><main className="beva-content"><AnimatePresence mode="wait" initial={false}><motion.div key={section} initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} exit={{ opacity: 0, y: -7, filter: 'blur(3px)' }} transition={{ duration: .24, ease: [.2,.8,.2,1] }}>
@@ -94,7 +94,7 @@ export default function App() {
       {section === 'configuration' && <ConfigurationScreen {...shared} setIntakeId={setIntakeId} onSection={setSection} />}
     </motion.div></AnimatePresence></main><MobileNav section={section} onSection={setSection} /></div>
     <NewStudentSheet open={newStudentOpen} onOpenChange={setNewStudentOpen} data={data} intakeId={intakeId} mutate={mutate} />
-    <StudentSheet student={studentSheet} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />
+    <StudentSheet student={studentSheet} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} showToast={showToast} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />
     <PaymentSheet enrollment={paymentSheet} onClose={() => setPaymentSheet(null)} data={data} mutate={mutate} />
     <AnimatePresence>{toast && <Toast {...toast} />}</AnimatePresence>{mobileMenu && <button type="button" className="mobile-overlay" aria-label="Fermer le menu" onClick={() => setMobileMenu(false)} />}
   </div></MotionConfig>

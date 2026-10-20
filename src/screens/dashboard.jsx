@@ -9,7 +9,7 @@ import { compactMoney, dateLabel, money, paymentMethodLabel, studentName } from 
 const palette = ['blue','teal','violet','amber','coral']
 
 export default function Dashboard({ data, view, intake, onSection }) {
-  const rate=view.expected?Math.min(100,Math.round(view.collected/view.expected*100)):0
+  const rate=Math.round(view.collectionRate)
   const activeStudents=view.students.filter(student=>student.status==='actif').length
   const pendingNotes=view.notes.filter(note=>note.follow_up_on&&new Date(note.follow_up_on)>=new Date(new Date().toDateString())).length
   const metrics=[
@@ -18,7 +18,7 @@ export default function Dashboard({ data, view, intake, onSection }) {
     {label:'Total encaissé',value:compactMoney(view.collected),detail:'FCFA',icon:CircleDollarSign,tone:'violet',bars:[2,5,3,7,4,6,9]},
     {label:'Relances',value:pendingNotes,detail:'notes planifiées',icon:CalendarClock,tone:'amber',bars:[6,4,7,5,3,6,4]}
   ]
-  return <LayoutGroup><div className="dashboard-hero"><div className="hero-copy"><Badge className="hero-badge"><Activity/> Données synchronisées</Badge><p>Bonjour {data.staff?.full_name?.split(' ')[0]},</p><h2>Voici le rythme de <span>{intake?.name || 'la vague'}</span>.</h2><div className="hero-actions"><Button size="sm" className="bg-white text-slate-900 hover:bg-white/90" onClick={()=>onSection('payments')}>Voir les paiements<ArrowRight/></Button><small>Mis à jour à l’ouverture de la session</small></div></div><div className="hero-gauge"><ArcGauge value={rate} label="encaissé" detail={`${compactMoney(view.collected)} sur ${compactMoney(view.expected)}`} /></div><div className="hero-glow one"/><div className="hero-glow two"/></div>
+  return <LayoutGroup><div className="dashboard-hero"><div className="hero-copy"><Badge className="hero-badge"><Activity/> Données synchronisées</Badge><p>Bonjour {data.staff?.full_name?.split(' ')[0]},</p><h2>Voici le rythme de <span>{intake?.name || 'la vague'}</span>.</h2><div className="hero-actions"><Button size="sm" className="bg-white text-slate-900 hover:bg-white/90" onClick={()=>onSection('payments')}>Voir les paiements<ArrowRight/></Button><small>Mis à jour à l’ouverture de la session</small></div></div><div className="hero-gauge"><ArcGauge value={rate} label="encaissé" detail={`${compactMoney(view.collected)} sur ${compactMoney(view.collectionExpected)}`} /></div><div className="hero-glow one"/><div className="hero-glow two"/></div>
     <div className="metric-orbit">{metrics.map((item,index)=><MetricTile key={item.label} item={item} index={index}/>)}</div>
     <div className="dashboard-bottom"><FormationUniverse items={view.formationCounts} unclassified={view.unclassified} onExplore={()=>onSection('students')} /><PaymentPulse view={view} onExplore={()=>onSection('payments')} /></div></LayoutGroup>
 }
