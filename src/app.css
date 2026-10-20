@@ -300,6 +300,21 @@ html.dark body{background:#07111f}
 .dark .tone-blue .metric-icon{color:#9bc0ff;background:#173257}.dark .tone-teal .metric-icon{color:#83dfd2;background:#143d3a}.dark .tone-violet .metric-icon{color:#c1b1ff;background:#302858}.dark .tone-amber .metric-icon{color:#f4ca79;background:#493719}
 .dark .student-card-foot i,.dark .config-formation-icon,.dark .intake-config-symbol{color:#9fc2ff;background:#1b3553}.dark .profile-facts svg,.dark .config-sheet-grid svg,.dark .intake-config-detail svg{color:#8fb8f7}.dark .sidebar-mobile-close{color:#d7e4f2;background:#172a42}
 
+/* Dark-mode contrast: dashboard trends, payment progress and navigation. */
+.dark .metric-tile span{color:#b5c5d8}.dark .metric-tile strong{color:#f4f8ff}.dark .metric-tile small{color:#91a6bd}
+.dark .metric-tile.tone-blue>.flex i{color:#79aaff;background:#79aaff;box-shadow:0 0 12px rgba(121,170,255,.18)}
+.dark .metric-tile.tone-teal>.flex i{color:#63d5c4;background:#63d5c4;box-shadow:0 0 12px rgba(99,213,196,.16)}
+.dark .metric-tile.tone-violet>.flex i{color:#b39cff;background:#b39cff;box-shadow:0 0 12px rgba(179,156,255,.16)}
+.dark .metric-tile.tone-amber>.flex i{color:#f0bf62;background:#f0bf62;box-shadow:0 0 12px rgba(240,191,98,.15)}
+.dark .payment-person{color:#f1f6fc}.dark .payment-person small{color:#a4b7cc}.dark .payment-person>svg{color:#86a5cb}
+.dark .payment-progress>div:first-child{color:#a9bbcf}.dark .payment-progress strong{color:#8db8ff}
+.dark .notch-gauge i{border:1px solid rgba(151,174,202,.08);background:#24364c}
+.dark .notch-gauge i.filled{border-color:rgba(116,166,255,.28);background:linear-gradient(180deg,#76aaff,#3977db);box-shadow:0 4px 10px rgba(49,112,219,.2)}
+.dark .payment-values>div{border:1px solid #2a3d54;background:#0d1a2b}.dark .payment-values strong{color:#eef5fc}.dark .payment-values .due-text{color:#ffc46d}.dark .payment-values .paid-text{color:#6fe0bc}
+.beva-shell.dark .sidebar-v2{border-right:1px solid rgba(126,162,205,.14);box-shadow:18px 0 45px rgba(0,0,0,.18)}
+.beva-shell.dark .sidebar-label{color:#91a9c4}.beva-shell.dark .sidebar-v2 nav button{color:#b9c9db}.beva-shell.dark .sidebar-v2 nav button:hover{color:#f4f8fd;background:rgba(255,255,255,.035)}
+.beva-shell.dark .sidebar-v2 nav button.active{color:#fff}.beva-shell.dark .sidebar-v2 nav button.active svg{color:#f1cc68}.beva-shell.dark .nav-active-bg{border-color:rgba(145,181,227,.18);background:linear-gradient(90deg,rgba(75,126,194,.23),rgba(255,255,255,.055));box-shadow:inset 3px 0 0 #f0c85d,0 10px 25px rgba(0,0,0,.16)}
+
 @media(max-width:720px){
   .topbar-v2,.mobile-nav-v2{backdrop-filter:none}
   .mobile-overlay{backdrop-filter:none}
