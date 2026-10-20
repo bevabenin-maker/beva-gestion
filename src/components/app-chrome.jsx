@@ -21,7 +21,7 @@ export function Sidebar({ section, onSection, staff, onLogout, className }) {
     <div className="sidebar-brand"><BrandMark /><div><strong>BEVA</strong><small>Gestion interne</small></div><button type="button" className="sidebar-mobile-close" onClick={() => onSection(section)}><X /></button></div>
     <p className="sidebar-label">Pilotage</p>
     <nav>{Object.entries(sectionMeta).map(([key,item]) => { const Icon=item.icon; return <button key={key} type="button" className={cn(section===key&&'active')} onClick={()=>onSection(key)}>{section===key&&<motion.i layoutId="nav-active" className="nav-active-bg" />}<Icon/><span>{item.label}</span></button> })}</nav>
-    <div className="sidebar-foot"><div className="staff-chip"><div className="staff-avatar">{initials({first_name:staff?.full_name?.split(' ')[0],last_name:staff?.full_name?.split(' ').slice(-1)[0]})}</div><div><strong>{staff?.full_name}</strong><small>{roleLabel(staff?.role)}</small></div></div><Button variant="ghost" size="sm" className="w-full justify-start text-slate-300 hover:bg-white/8 hover:text-white" onClick={onLogout}><LogOut/>Déconnexion</Button></div>
+    <div className="sidebar-foot"><div className="sidebar-account"><div className="staff-avatar">{initials({first_name:staff?.full_name?.split(' ')[0],last_name:staff?.full_name?.split(' ').slice(-1)[0]})}</div><div className="staff-identity"><strong title={staff?.full_name}>{staff?.full_name}</strong><small>{roleLabel(staff?.role)}</small></div><button type="button" className="sidebar-logout" aria-label="Se déconnecter" title="Se déconnecter" onClick={onLogout}><LogOut/><span>Déconnexion</span></button></div></div>
   </aside>
 }
 
