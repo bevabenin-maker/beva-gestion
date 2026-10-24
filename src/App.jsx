@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { BrandMark, MobileNav, Sidebar, Topbar } from '@/components/app-chrome'
 import Dashboard from '@/screens/dashboard'
 import { cn } from '@/lib/utils'
+import { applyPreferences, tr } from '@/lib/preferences'
 
 const isPreview = new URLSearchParams(window.location.search).get('preview') === '1'
 const loadStudentsScreen = () => import('@/screens/students')
@@ -25,6 +26,11 @@ const StudentSheet = lazy(() => loadActionSheets().then(module => ({ default: mo
 const PaymentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.PaymentSheet })))
 const ReceiptSheet = lazy(() => loadActionSheets().then(module => ({ default: module.ReceiptSheet })))
 
+const readCachedRates = () => {
+  try { return JSON.parse(localStorage.getItem('beva-exchange-rates') || 'null') || { XOF: 1 } }
+  catch { return { XOF: 1 } }
+}
+
 export default function App() {
   const [session, setSession] = useState(isPreview ? { user: previewUser } : null)
   const [data, setData] = useState(isPreview ? previewData : null)
@@ -39,8 +45,37 @@ export default function App() {
   const [newStudentOpen, setNewStudentOpen] = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const [theme,setTheme]=useState(()=>localStorage.getItem('beva-theme')||'light')
+  const [language,setLanguage]=useState(()=>localStorage.getItem('beva-language')||'fr')
+  const [currency,setCurrency]=useState(()=>localStorage.getItem('beva-currency')||'XOF')
+  const [exchangeRates,setExchangeRates]=useState(readCachedRates)
+  const [ratesUpdatedAt,setRatesUpdatedAt]=useState(()=>localStorage.getItem('beva-exchange-rates-date')||null)
+  const [ratesStatus,setRatesStatus]=useState('loading')
+
+  applyPreferences({ language, currency, rates: exchangeRates, ratesUpdatedAt })
 
   useEffect(()=>{localStorage.setItem('beva-theme',theme);document.documentElement.classList.toggle('dark',theme==='dark')},[theme])
+  useEffect(()=>{localStorage.setItem('beva-language',language);document.documentElement.lang=language},[language])
+  useEffect(()=>{localStorage.setItem('beva-currency',currency)},[currency])
+
+  const refreshExchangeRates = useCallback(async () => {
+    setRatesStatus('loading')
+    try {
+      const response = await fetch('https://api.frankfurter.dev/v2/rates?base=XOF&quotes=EUR,USD,JPY')
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const payload = await response.json()
+      const rows = Array.isArray(payload) ? payload : Object.entries(payload.rates || {}).map(([quote,rate]) => ({ quote, rate, date: payload.date }))
+      const next = { XOF: 1 }
+      rows.forEach(item => { if (['EUR','USD','JPY'].includes(String(item.quote).toUpperCase())) next[String(item.quote).toUpperCase()] = Number(item.rate) })
+      if (!next.EUR || !next.USD || !next.JPY) throw new Error('Taux incomplets')
+      const updatedAt = rows.find(item => item.date)?.date || new Date().toISOString().slice(0,10)
+      setExchangeRates(next);setRatesUpdatedAt(updatedAt);setRatesStatus('ready')
+      localStorage.setItem('beva-exchange-rates',JSON.stringify(next));localStorage.setItem('beva-exchange-rates-date',updatedAt)
+    } catch {
+      setRatesStatus(Object.keys(exchangeRates).length > 1 ? 'cached' : 'error')
+    }
+  }, [])
+
+  useEffect(()=>{refreshExchangeRates()},[refreshExchangeRates])
 
   const showToast = useCallback((message, bad = false) => {
     setToast({ message, bad })
@@ -76,7 +111,7 @@ export default function App() {
     if (isPreview || !userId) return
     setLoading(true)
     loadCoreData(userId).then(next => {
-      if (!next.staff?.active) throw new Error('Ce compte ne dispose pas d’un accès actif à BEVA Gestion.')
+      if (!next.staff?.active) throw new Error(tr('Ce compte ne dispose pas d’un accès actif à BEVA Gestion.', 'This account does not have active access to BEVA Gestion.'))
       setData(next)
       setIntakeId(next.intakes.find(item => item.active)?.id || next.intakes[0]?.id || null)
     }).catch(loadError => setError(loadError.message)).finally(() => setLoading(false))
@@ -100,7 +135,7 @@ export default function App() {
       if (isPreview) setData(current => preview(current))
       else { const result = await live(); if (result?.error) throw result.error; await refresh() }
       showToast(success)
-    } catch (mutationError) { showToast(mutationError.message || 'L’opération a échoué.', true) }
+    } catch (mutationError) { showToast(mutationError.message || tr('L’opération a échoué.', 'The operation failed.'), true) }
   }
 
   if (loading) return <LoadingScreen />
@@ -117,7 +152,7 @@ export default function App() {
         {section === 'students' && <StudentsScreen {...shared} onStudent={setStudentSheet} onNew={() => setNewStudentOpen(true)} />}
         {section === 'payments' && <PaymentsScreen {...shared} onPayment={setPaymentSheet} onStudent={setStudentSheet} onReceipt={setReceiptSheet} />}
         {section === 'analytics' && <AnalyticsScreen {...shared} onStudent={setStudentSheet} />}
-        {section === 'configuration' && <ConfigurationScreen {...shared} setIntakeId={setIntakeId} onSection={setSection} />}
+        {section === 'configuration' && <ConfigurationScreen {...shared} setIntakeId={setIntakeId} onSection={setSection} language={language} currency={currency} setLanguage={setLanguage} setCurrency={setCurrency} exchangeRates={exchangeRates} ratesUpdatedAt={ratesUpdatedAt} ratesStatus={ratesStatus} refreshExchangeRates={refreshExchangeRates} />}
       </Suspense>
     </motion.div></AnimatePresence></main><MobileNav section={section} onSection={setSection} /></div>
     <Suspense fallback={null}>
@@ -131,13 +166,13 @@ export default function App() {
 }
 
 function SectionLoader() { return <div className="section-loader" aria-label="Chargement de la rubrique"><i/><i/><i/></div> }
-function LoadingScreen() { return <div className="loading-screen"><motion.div className="grid justify-items-center gap-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><BrandMark large /><div className="grid gap-2 text-center"><strong className="text-sm">Préparation de votre espace</strong><span>Synchronisation des dossiers BEVA…</span></div><div className="loading-track"><motion.i animate={{ x: ['-100%','200%'] }} transition={{ duration: 1.05, repeat: Infinity, ease: 'easeInOut' }} /></div></motion.div></div> }
+function LoadingScreen() { return <div className="loading-screen"><motion.div className="grid justify-items-center gap-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><BrandMark large /><div className="grid gap-2 text-center"><strong className="text-sm">{tr('Préparation de votre espace', 'Preparing your workspace')}</strong><span>{tr('Synchronisation des dossiers BEVA…', 'Synchronising BEVA records…')}</span></div><div className="loading-track"><motion.i animate={{ x: ['-100%','200%'] }} transition={{ duration: 1.05, repeat: Infinity, ease: 'easeInOut' }} /></div></motion.div></div> }
 
 function LoginScreen({ error, onError, theme, onToggleTheme }) {
   const [forgot, setForgot] = useState(false); const [busy, setBusy] = useState(false)
   async function submit(event) { event.preventDefault(); setBusy(true); onError(''); const form = new FormData(event.currentTarget); const email = form.get('email'); const result = forgot ? await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split('#')[0] }) : await supabase.auth.signInWithPassword({ email, password: form.get('password') }); if (result.error) onError(result.error.message); else if (forgot) onError('Un lien sécurisé a été envoyé à votre adresse e-mail.'); setBusy(false) }
-  return <div className="login-v2"><section className="login-story"><BrandMark large /><div><p className="login-eyebrow">BEVA · Gestion interne</p><h1>Gérer l’essentiel.<br/><span>Comprendre le reste.</span></h1><p>Un espace unique pour suivre les étudiants, les formations et les paiements avec clarté.</p></div><small>Accès réservé au personnel autorisé</small></section><section className="login-form-wrap"><button type="button" className="theme-switch-v2 login-theme-switch" onClick={onToggleTheme} aria-label={theme==='dark'?'Activer le mode clair':'Activer le mode sombre'}><span>{theme==='dark'?<Sun/>:<Moon/>}</span><b>{theme==='dark'?'Mode clair':'Mode sombre'}</b></button><motion.form className="login-form" onSubmit={submit} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><Badge variant="info"><Activity/> Espace sécurisé</Badge><h2>{forgot ? 'Réinitialiser le mot de passe' : 'Heureux de vous revoir'}</h2><p>{forgot ? 'Nous vous enverrons un lien de récupération.' : 'Connectez-vous pour ouvrir votre tableau de bord.'}</p><label>Adresse e-mail<input name="email" type="email" required autoComplete="email" placeholder="vous@beva.bj" /></label>{!forgot && <label>Mot de passe<input name="password" type="password" required autoComplete="current-password" /></label>}<p className={cn('min-h-5 text-xs', error?.startsWith('Un lien') ? 'text-emerald-600' : 'text-destructive')}>{error}</p><Button className="w-full" size="lg" disabled={busy}>{busy ? 'Veuillez patienter…' : forgot ? 'Envoyer le lien' : 'Se connecter'}<ArrowRight /></Button><button type="button" className="text-xs font-semibold text-primary" onClick={() => { setForgot(value => !value); onError('') }}>{forgot ? 'Retour à la connexion' : 'Mot de passe oublié ?'}</button></motion.form></section></div>
+  return <div className="login-v2"><section className="login-story"><BrandMark large /><div><p className="login-eyebrow">BEVA · {tr('Gestion interne', 'Internal management')}</p><h1>{tr('Gérer l’essentiel.', 'Manage what matters.')}<br/><span>{tr('Comprendre le reste.', 'Understand the rest.')}</span></h1><p>{tr('Un espace unique pour suivre les étudiants, les formations et les paiements avec clarté.', 'One clear workspace for students, courses and payments.')}</p></div><small>{tr('Accès réservé au personnel autorisé', 'Access restricted to authorised staff')}</small></section><section className="login-form-wrap"><button type="button" className="theme-switch-v2 login-theme-switch" onClick={onToggleTheme} aria-label={theme==='dark'?tr('Activer le mode clair', 'Enable light mode'):tr('Activer le mode sombre', 'Enable dark mode')}><span>{theme==='dark'?<Sun/>:<Moon/>}</span><b>{theme==='dark'?tr('Mode clair', 'Light mode'):tr('Mode sombre', 'Dark mode')}</b></button><motion.form className="login-form" onSubmit={submit} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><Badge variant="info"><Activity/> {tr('Espace sécurisé', 'Secure workspace')}</Badge><h2>{forgot ? tr('Réinitialiser le mot de passe', 'Reset password') : tr('Heureux de vous revoir', 'Welcome back')}</h2><p>{forgot ? tr('Nous vous enverrons un lien de récupération.', 'We will send you a recovery link.') : tr('Connectez-vous pour ouvrir votre tableau de bord.', 'Sign in to open your dashboard.')}</p><label>{tr('Adresse e-mail', 'Email address')}<input name="email" type="email" required autoComplete="email" placeholder="vous@beva.bj" /></label>{!forgot && <label>{tr('Mot de passe', 'Password')}<input name="password" type="password" required autoComplete="current-password" /></label>}<p className={cn('min-h-5 text-xs', error?.startsWith('Un lien') ? 'text-emerald-600' : 'text-destructive')}>{error}</p><Button className="w-full" size="lg" disabled={busy}>{busy ? tr('Veuillez patienter…', 'Please wait…') : forgot ? tr('Envoyer le lien', 'Send link') : tr('Se connecter', 'Sign in')}<ArrowRight /></Button><button type="button" className="text-xs font-semibold text-primary" onClick={() => { setForgot(value => !value); onError('') }}>{forgot ? tr('Retour à la connexion', 'Back to sign in') : tr('Mot de passe oublié ?', 'Forgot password?')}</button></motion.form></section></div>
 }
 
-function ErrorScreen({ error }) { return <div className="grid min-h-screen place-items-center bg-background p-6"><div className="max-w-md rounded-3xl border bg-card p-8 text-center shadow-xl"><BrandMark /><h1 className="mt-5 text-xl font-bold">BEVA Gestion n’a pas pu démarrer</h1><p className="mt-3 text-sm text-muted-foreground">{error}</p><Button className="mt-6" onClick={() => window.location.reload()}>Réessayer</Button></div></div> }
+function ErrorScreen({ error }) { return <div className="grid min-h-screen place-items-center bg-background p-6"><div className="max-w-md rounded-3xl border bg-card p-8 text-center shadow-xl"><BrandMark /><h1 className="mt-5 text-xl font-bold">{tr('BEVA Gestion n’a pas pu démarrer', 'BEVA Gestion could not start')}</h1><p className="mt-3 text-sm text-muted-foreground">{error}</p><Button className="mt-6" onClick={() => window.location.reload()}>{tr('Réessayer', 'Try again')}</Button></div></div> }
 function Toast({ message, bad }) { return <motion.div className={cn('toast-v2',bad&&'bad')} initial={{opacity:0,y:20,scale:.96}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:12,scale:.97}}><span>{bad?<X/>:<Check/>}</span>{message}</motion.div> }

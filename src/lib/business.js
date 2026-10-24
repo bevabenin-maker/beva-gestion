@@ -1,14 +1,16 @@
-export const money = value => `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`
-export const compactMoney = value => new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
+import { formatMoney, localeCode, tr } from './preferences.js'
+
+export const money = value => formatMoney(value)
+export const compactMoney = value => formatMoney(value, { compact: true })
 export const displayCode = value => String(value ?? '').replace(/^IN-?/i, '') || '—'
 export const feeFor = scholarship => scholarship ? 90000 : 180000
-export const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status || 'À préciser')
-export const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status || 'À préciser')
-export const roleLabel = role => ({ admin: 'Administrateur', direction: 'Direction', agent: 'Agent' }[role] || role || 'Personnel')
-export const paymentMethodLabel = method => ({ especes: 'Espèces', mobile_money: 'Mobile Money', banque: 'Virement', carte: 'Carte', autre: 'Autre' }[method] || String(method || '—').replaceAll('_', ' '))
-export const paymentMonthLabel = month => month ? `Mois ${month}` : 'Paiement global'
-export const dateLabel = value => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(new Date(value)) : '—'
-export const dateTimeLabel = value => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
+export const studentStatusLabel = status => ({ actif: tr('Actif', 'Active'), suspendu: tr('Suspendu', 'Suspended'), abandonne: tr('Abandon', 'Withdrawn') }[status] || status || tr('À préciser', 'To be specified'))
+export const enrollmentStatusLabel = status => ({ disponible: tr('Disponible', 'Available'), inscrit: tr('Actif', 'Active'), termine: tr('Terminé', 'Completed'), abandonne: tr('Abandon', 'Withdrawn') }[status] || status || tr('À préciser', 'To be specified'))
+export const roleLabel = role => ({ admin: tr('Administrateur', 'Administrator'), direction: tr('Direction', 'Management'), agent: tr('Agent', 'Officer') }[role] || role || tr('Personnel', 'Staff'))
+export const paymentMethodLabel = method => ({ especes: tr('Espèces', 'Cash'), mobile_money: 'Mobile Money', banque: tr('Virement', 'Bank transfer'), carte: tr('Carte', 'Card'), autre: tr('Autre', 'Other') }[method] || String(method || '—').replaceAll('_', ' '))
+export const paymentMonthLabel = month => month ? `${tr('Mois', 'Month')} ${month}` : tr('Paiement global', 'General payment')
+export const dateLabel = value => value ? new Intl.DateTimeFormat(localeCode(), { dateStyle: 'medium' }).format(new Date(value)) : '—'
+export const dateTimeLabel = value => value ? new Intl.DateTimeFormat(localeCode(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 
 export function ageOf(student) {
   if (!student?.birth_date) return Number.isFinite(Number(student?.age)) ? Number(student.age) : null
@@ -27,7 +29,7 @@ export function financialStatus(enrollment, student, payments) {
   const accounted = Boolean(enrollment.formation_id && enrollment.status === 'inscrit' && student?.status === 'actif')
   const due = accounted ? Number(enrollment.agreed_fee ?? feeFor(Boolean(enrollment.scholarship_status))) : 0
   const remaining = Math.max(0, due - paid)
-  const label = !accounted ? 'Non comptabilisé' : remaining === 0 ? 'Soldé' : paid > 0 ? 'Partiel' : 'Non payé'
+  const label = !accounted ? tr('Non comptabilisé', 'Not counted') : remaining === 0 ? tr('Soldé', 'Paid in full') : paid > 0 ? tr('Partiel', 'Part-paid') : tr('Non payé', 'Unpaid')
   return { paid, due, remaining, accounted, label }
 }
 
@@ -82,10 +84,10 @@ export function initials(person) {
   return `${person?.first_name?.[0] || ''}${person?.last_name?.[0] || ''}`.toUpperCase() || 'BE'
 }
 
-export const studentName = student => student ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : 'Étudiant inconnu'
+export const studentName = student => student ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : tr('Étudiant inconnu', 'Unknown student')
 
 export function noteSummary(notes, studentId) {
   const items = notes.filter(note => note.student_id === studentId)
   const followUp = items.filter(note => note.follow_up_on).sort((a, b) => String(a.follow_up_on).localeCompare(String(b.follow_up_on)))[0]
-  return followUp ? `Relance ${dateLabel(`${followUp.follow_up_on}T12:00:00`)}` : `${items.length} note${items.length > 1 ? 's' : ''}`
+  return followUp ? `${tr('Relance', 'Follow-up')} ${dateLabel(`${followUp.follow_up_on}T12:00:00`)}` : `${items.length} ${items.length > 1 ? tr('notes', 'notes') : tr('note', 'note')}`
 }
