@@ -1,6 +1,9 @@
+import { JAPANESE_TRANSLATIONS } from './translations-ja.js'
+
 export const LANGUAGES = [
   { value: 'fr', label: 'Français', nativeLabel: 'Français' },
-  { value: 'en', label: 'English', nativeLabel: 'English' }
+  { value: 'en', label: 'English', nativeLabel: 'English' },
+  { value: 'ja', label: 'Japonais', nativeLabel: '日本語' }
 ]
 
 export const CURRENCIES = [
@@ -25,8 +28,12 @@ export const currentLanguage = () => activePreferences.language
 export const currentCurrency = () => activePreferences.currency
 export const currentRate = () => Number(activePreferences.rates[activePreferences.currency] || (activePreferences.currency === 'XOF' ? 1 : 0))
 export const ratesUpdatedAt = () => activePreferences.ratesUpdatedAt
-export const localeCode = () => activePreferences.language === 'en' ? 'en-GB' : 'fr-FR'
-export const tr = (french, english) => activePreferences.language === 'en' ? english : french
+export const localeCode = () => ({ en: 'en-GB', ja: 'ja-JP' })[activePreferences.language] || 'fr-FR'
+export const tr = (french, english, japanese) => {
+  if (activePreferences.language === 'en') return english
+  if (activePreferences.language === 'ja') return japanese || JAPANESE_TRANSLATIONS[french] || english
+  return french
+}
 
 export function formatNumber(value, options = {}) {
   return new Intl.NumberFormat(localeCode(), options).format(Number(value || 0))
@@ -54,5 +61,5 @@ export function formatMoney(value, { compact = false } = {}) {
 }
 
 export function receiptFileName(number) {
-  return `${tr('reçu', 'receipt')}-${String(number || '').replace(/^N[°ºo]?\s*/i, '')}`
+  return `reçu-${String(number || '').replace(/^N[°ºo]?\s*/i, '')}`
 }

@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Field, Input, Select, Textarea } from '@/components/ui/field'
 import { Sheet } from '@/components/ui/sheet'
 import { receiptHtml, receiptNumber } from '@/lib/receipts'
-import { tr } from '@/lib/preferences'
+import { receiptFileName, tr } from '@/lib/preferences'
 
 export function NewStudentSheet({ open, onOpenChange, data, intakeId, mutate }) {
   const [busy,setBusy]=useState(false)
@@ -57,6 +57,12 @@ export function PaymentSheet({ enrollment, onClose, data, mutate }) {
 }
 
 export function ReceiptSheet({ payment, onClose, data }) {
+  useEffect(()=>{
+    if(!payment)return undefined
+    const previousTitle=document.title
+    document.title=receiptFileName(receiptNumber(payment))
+    return()=>{document.title=previousTitle}
+  },[payment])
   if(!payment)return null
   return <Sheet open={Boolean(payment)} onOpenChange={value=>!value&&onClose()} title={payment.cancelled_at?tr('Annulation de versement','Payment cancellation'):tr('Reçu de paiement','Payment receipt')} description={`N° ${receiptNumber(payment)}`} className="receipt-viewer-sheet"><iframe key={payment.id} className="receipt-frame" title={`${tr('Reçu','Receipt')} ${receiptNumber(payment)}`} srcDoc={receiptHtml(payment,data)}/></Sheet>
 }

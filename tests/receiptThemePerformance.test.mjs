@@ -23,5 +23,6 @@ assert.match(receipts, /tr\('Montant reçu','Amount received'\)/)
 assert.match(receipts, /padding:18px 14px max\(28px,env\(safe-area-inset-bottom\)\)/)
 assert.match(receipts, /receiptFileName\(receiptNumber\(payment\)\)/)
 assert.doesNotMatch(receipts, /<title>\$\{cancelled \? 'Annulation'/)
+assert.match(sheets, /document\.title=receiptFileName\(receiptNumber\(payment\)\)/)
 
 console.log('Reçus intégrés, thème sombre et chemin de chargement vérifiés.')
