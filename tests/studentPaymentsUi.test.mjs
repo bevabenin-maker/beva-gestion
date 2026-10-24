@@ -9,6 +9,6 @@ const businessImport = studentSheet.match(/import \{([^}]+)\} from '@\/lib\/busi
 assert.match(businessImport, /\bpaymentMethodLabel\b/, 'Le panneau Paiements doit importer paymentMethodLabel.')
 assert.match(studentSheet, /tab==='payments'/, 'La fiche étudiante doit conserver son onglet Paiements.')
 assert.match(sidebar, /className="sidebar-account"/, 'Le profil connecté doit rester intégré à la barre latérale.')
-assert.match(sidebar, /aria-label="Se déconnecter"/, 'La déconnexion doit rester accessible.')
+assert.match(sidebar, /aria-label=\{tr\('Se déconnecter', 'Sign out'\)\}/, 'La déconnexion doit rester accessible.')
 
 console.log('Test fiche Paiements et profil latéral : OK')

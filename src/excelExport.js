@@ -1,4 +1,5 @@
 import { classifyStudentsByFormation } from './formationGroups.js'
+import { currentCurrency, currentRate, localeCode } from './lib/preferences.js'
 
 const NAVY = '#071A33'
 const BLUE = '#0C417D'
@@ -64,7 +65,12 @@ const textCell = value => {
   return { value: protectedText, type: String, format: '@' }
 }
 const numberCell = value => ({ value: Number(value || 0), type: Number, format: '#,##0' })
-const moneyCell = value => ({ value: Number(value || 0), type: Number, format: '#,##0 "FCFA"' })
+const moneyFormats = { XOF: '#,##0 "FCFA"', EUR: '€#,##0.00', USD: '$#,##0.00', JPY: '¥#,##0' }
+const moneyCell = value => {
+  const currency = currentCurrency()
+  const rate = currentRate() || 1
+  return { value: Number(value || 0) * rate, type: Number, format: moneyFormats[currency] || '#,##0.00' }
+}
 const dateCell = (value, includeTime = false) => {
   const date = asDate(value)
   return date ? { value: date, type: Date, format: includeTime ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy' } : ''
@@ -126,7 +132,7 @@ function makeSheet({ sheet, title, subtitle, headers, widths, rows, zoomScale = 
   }
 }
 
-const exportDateLabel = () => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date())
+const exportDateLabel = () => new Intl.DateTimeFormat(localeCode(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date())
 const cleanFilePart = value => String(value || 'BEVA').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'BEVA'
 const sortStudents = students => students.slice().sort((a, b) => Number(b.intake_student_number || 0) - Number(a.intake_student_number || 0))
 
