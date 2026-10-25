@@ -362,5 +362,9 @@ export const JAPANESE_TRANSLATIONS = {
   'Formation non précisée': '講座未指定',
   'Ouvrir le reçu de': '領収書を開く：',
   'Export Excel préparé.': 'Excel出力を準備しました。',
-  'par son parcours.': '（経歴に基づく）'
+  'par son parcours.': '（経歴に基づく）',
+  'Évolution': '推移',
+  'Inscriptions par mois': '月別登録数',
+  'étudiants au total': '受講生合計',
+  'Six derniers mois': '直近6か月'
 }
