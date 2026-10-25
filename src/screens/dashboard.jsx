@@ -18,7 +18,7 @@ function RefreshedDashboard({ data, view, intake, onSection, onStudent }) {
   const outstanding=view.financial.filter(item=>item.accounted&&item.remaining>0).sort((a,b)=>b.remaining-a.remaining)
   const followUps=view.notes.filter(note=>note.follow_up_on&&new Date(`${note.follow_up_on}T23:59:59`)>=new Date()).sort((a,b)=>String(a.follow_up_on).localeCompare(String(b.follow_up_on)))
   const metrics=[
-    {label:tr('Étudiants actifs','Active students'),value:activeStudents,detail:`${view.activeEnrollments.length} ${tr('dossiers actifs','active records')}`,icon:Users,tone:'green'},
+    {label:tr('Étudiants actifs','Active students'),value:activeStudents,detail:`${view.activeEnrollments.length} ${tr('dossiers actifs','active records')}`,icon:Users,tone:'blue'},
     {label:tr('Total encaissé','Total collected'),value:money(view.collected),detail:tr('Versements non annulés','Non-cancelled payments'),icon:CircleDollarSign,tone:'violet'},
     {label:tr('Reste à payer','Balance due'),value:money(view.remaining),detail:`${outstanding.length} ${tr('dossiers à suivre','records to follow up')}`,icon:Clock3,tone:'amber'}
   ]
@@ -29,7 +29,7 @@ function RefreshedDashboard({ data, view, intake, onSection, onStudent }) {
     <section className="refresh-metrics" aria-label={tr('Indicateurs principaux','Key indicators')}>{metrics.map((item,index)=><RefreshMetric key={item.label} item={item} index={index}/>)}</section>
 
     <section className="refresh-main-grid">
-      <PaymentTrend payments={view.payments}/>
+      <FinancialSnapshot view={view}/>
       <FormationList items={view.formationCounts} total={view.activeEnrollments.length} unclassified={view.unclassified} onExplore={()=>onSection('students')}/>
     </section>
 
@@ -42,27 +42,16 @@ function RefreshedDashboard({ data, view, intake, onSection, onStudent }) {
 
 function RefreshMetric({ item, index }) {
   const Icon=item.icon
-  return <motion.article layout className={cn('refresh-metric',`refresh-tone-${item.tone}`)} initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{delay:index*.045}} whileHover={{y:-3}}><div className="refresh-metric-head"><span>{item.label}</span><i><Icon/></i></div><strong>{item.value}</strong><small>{item.detail}</small></motion.article>
+  return <motion.article layout className={cn('refresh-metric',`refresh-tone-${item.tone}`)} initial={{opacity:0,scale:.985}} animate={{opacity:1,scale:1}} transition={{delay:index*.035,duration:.2}} whileHover={{scale:1.008}}><div className="refresh-metric-head"><span>{item.label}</span><i><Icon/></i></div><strong>{item.value}</strong><small>{item.detail}</small></motion.article>
 }
 
-function monthSeries(payments) {
-  const formatter=new Intl.DateTimeFormat(localeCode(),{month:'short'})
-  return Array.from({length:6},(_,offset)=>{
-    const date=new Date();date.setDate(1);date.setHours(0,0,0,0);date.setMonth(date.getMonth()-(5-offset))
-    const next=new Date(date);next.setMonth(next.getMonth()+1)
-    const value=payments.filter(item=>!item.cancelled_at&&new Date(item.paid_at)>=date&&new Date(item.paid_at)<next).reduce((sum,item)=>sum+Number(item.amount||0),0)
-    return {label:formatter.format(date).replace('.',''),value}
-  })
-}
-
-function PaymentTrend({ payments }) {
-  const series=monthSeries(payments)
-  const max=Math.max(...series.map(item=>item.value),1)
-  const points=series.map((item,index)=>({x:index*124,y:154-(item.value/max)*126,...item}))
-  const line=points.map(point=>`${point.x},${point.y}`).join(' ')
-  const area=`0,164 ${line} 620,164`
-  const latest=series.at(-1)
-  return <section className="refresh-panel refresh-trend"><header><div><span className="refresh-kicker">{tr('Trésorerie','Cash flow')}</span><h3>{tr('Évolution des encaissements','Collection trend')}</h3><p>{tr('Montants réellement reçus sur les six derniers mois.','Amounts actually received over the last six months.')}</p></div><div className="refresh-trend-latest"><span>{tr('Ce mois','This month')}</span><strong>{money(latest.value)}</strong></div></header><div className="refresh-chart"><div className="refresh-chart-grid"><i/><i/><i/><i/></div><svg viewBox="0 0 620 170" preserveAspectRatio="none" role="img" aria-label={tr('Courbe des encaissements sur six mois','Six-month collection chart')}><defs><linearGradient id="refresh-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--refresh-green)" stopOpacity=".26"/><stop offset="100%" stopColor="var(--refresh-green)" stopOpacity="0"/></linearGradient></defs><polygon points={area} fill="url(#refresh-area)"/><motion.polyline points={line} fill="none" pathLength="1" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:.8,ease:[.2,.8,.2,1]}}/>{points.map((point,index)=><circle key={point.label} cx={point.x} cy={point.y} r={index===points.length-1?5:3.5}><title>{point.label}: {money(point.value)}</title></circle>)}</svg><div className="refresh-chart-labels">{series.map(item=><span key={item.label}>{item.label}</span>)}</div></div></section>
+function FinancialSnapshot({ view }) {
+  const active=view.financial.filter(item=>item.accounted)
+  const expected=active.reduce((sum,item)=>sum+item.due,0)
+  const paid=active.reduce((sum,item)=>sum+Math.min(item.paid,item.due),0)
+  const remaining=active.reduce((sum,item)=>sum+item.remaining,0)
+  const rate=expected?Math.min(100,Math.round(paid/expected*100)):0
+  return <section className="refresh-panel refresh-finance"><header><div><span className="refresh-kicker">{tr('Situation financière','Financial position')}</span><h3>{tr('Encaissement des dossiers actifs','Active records collection')}</h3><p>{tr('Une lecture exacte des montants attendus, versés et restant à payer.','An exact view of expected, paid and outstanding amounts.')}</p></div><Badge variant={rate>=75?'success':rate>=40?'warning':'info'}>{rate}% {tr('encaissé','collected')}</Badge></header><div className="refresh-finance-body"><div className="refresh-finance-score" style={{'--finance-rate':`${rate}%`}}><div><strong>{rate}%</strong><span>{tr('taux réel','actual rate')}</span></div></div><div className="refresh-finance-values"><article><span>{tr('Montant attendu','Expected amount')}</span><strong>{money(expected)}</strong></article><article><span>{tr('Déjà versé','Already paid')}</span><strong>{money(paid)}</strong></article><article className="remaining"><span>{tr('Reste à payer','Balance due')}</span><strong>{money(remaining)}</strong></article><div className="refresh-finance-track" role="progressbar" aria-label={tr('Taux encaissé','Collection rate')} aria-valuenow={rate} aria-valuemin="0" aria-valuemax="100"><motion.i initial={{width:0}} animate={{width:`${rate}%`}} transition={{duration:.6,ease:[.22,1,.36,1]}}/><span>{rate}%</span></div></div></div></section>
 }
 
 function FormationList({ items, total, unclassified, onExplore }) {
@@ -71,11 +60,11 @@ function FormationList({ items, total, unclassified, onExplore }) {
 }
 
 function OutstandingList({ items, onStudent, onExplore }) {
-  return <section className="refresh-panel refresh-list"><header><div><span className="refresh-kicker">{tr('Priorité','Priority')}</span><h3>{tr('Dossiers à suivre','Records to follow up')}</h3><p>{tr('Classés par solde restant.','Sorted by outstanding balance.')}</p></div><button type="button" onClick={onExplore}>{tr('Voir tout','View all')}<ArrowRight/></button></header><div>{items.map((item,index)=><motion.button type="button" key={item.enrollment.id} onClick={()=>onStudent(item.student)} initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:index*.04}}><span className={`refresh-avatar avatar-${index%5}`}>{initials(item.student)}</span><span><strong>{studentName(item.student)}</strong><small>{item.formation?.name||tr('Formation','Course')}</small></span><em><small>RAF</small><strong>{money(item.remaining)}</strong></em><ArrowRight/></motion.button>)}{!items.length&&<p className="refresh-empty">{tr('Aucun solde à suivre.','No outstanding balance.')}</p>}</div></section>
+  return <section className="refresh-panel refresh-list"><header><div><span className="refresh-kicker">{tr('Priorité','Priority')}</span><h3>{tr('Dossiers à suivre','Records to follow up')}</h3><p>{tr('Classés par solde restant.','Sorted by outstanding balance.')}</p></div><button type="button" onClick={onExplore}>{tr('Voir tout','View all')}<ArrowRight/></button></header><div>{items.map((item,index)=><motion.button type="button" key={item.enrollment.id} onClick={()=>onStudent(item.student)} initial={{opacity:0}} animate={{opacity:1}} transition={{delay:index*.03,duration:.18}}><span className={`refresh-avatar avatar-${index%5}`}>{initials(item.student)}</span><span><strong>{studentName(item.student)}</strong><small>{item.formation?.name||tr('Formation','Course')}</small></span><em><small>RAF</small><strong>{money(item.remaining)}</strong></em><ArrowRight/></motion.button>)}{!items.length&&<p className="refresh-empty">{tr('Aucun solde à suivre.','No outstanding balance.')}</p>}</div></section>
 }
 
 function FollowUpList({ items, studentMap, onStudent, onExplore }) {
-  return <section className="refresh-panel refresh-list refresh-followups"><header><div><span className="refresh-kicker">{tr('Agenda','Schedule')}</span><h3>{tr('Relances prévues','Scheduled follow-ups')}</h3><p>{tr('Notes de suivi à traiter.','Follow-up notes to handle.')}</p></div><button type="button" onClick={onExplore}>{tr('Voir tout','View all')}<ArrowRight/></button></header><div>{items.map((note,index)=>{const student=studentMap.get(note.student_id);const date=new Date(`${note.follow_up_on}T12:00:00`);return <motion.button type="button" key={note.id} onClick={()=>onStudent(student)} initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:index*.04}}><span className="refresh-date"><b>{date.toLocaleDateString(localeCode(),{day:'2-digit'})}</b>{date.toLocaleDateString(localeCode(),{month:'short'}).replace('.','')}</span><span><strong>{studentName(student)}</strong><small>{note.content}</small></span><i className={index===0?'urgent':''}/></motion.button>})}{!items.length&&<p className="refresh-empty">{tr('Aucune relance planifiée.','No scheduled follow-up.')}</p>}</div></section>
+  return <section className="refresh-panel refresh-list refresh-followups"><header><div><span className="refresh-kicker">{tr('Agenda','Schedule')}</span><h3>{tr('Relances prévues','Scheduled follow-ups')}</h3><p>{tr('Notes de suivi à traiter.','Follow-up notes to handle.')}</p></div><button type="button" onClick={onExplore}>{tr('Voir tout','View all')}<ArrowRight/></button></header><div>{items.map((note,index)=>{const student=studentMap.get(note.student_id);const date=new Date(`${note.follow_up_on}T12:00:00`);return <motion.button type="button" key={note.id} onClick={()=>onStudent(student)} initial={{opacity:0}} animate={{opacity:1}} transition={{delay:index*.03,duration:.18}}><span className="refresh-date"><b>{date.toLocaleDateString(localeCode(),{day:'2-digit'})}</b>{date.toLocaleDateString(localeCode(),{month:'short'}).replace('.','')}</span><span><strong>{studentName(student)}</strong><small>{note.content}</small></span><i className={index===0?'urgent':''}/></motion.button>})}{!items.length&&<p className="refresh-empty">{tr('Aucune relance planifiée.','No scheduled follow-up.')}</p>}</div></section>
 }
 
 function ClassicDashboard({ data, view, intake, onSection }) {
