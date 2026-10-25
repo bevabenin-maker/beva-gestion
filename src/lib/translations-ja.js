@@ -386,5 +386,9 @@ export const JAPANESE_TRANSLATIONS = {
   'Aucun solde à suivre.': 'フォローが必要な残高はありません。',
   'Agenda': '予定',
   'Notes de suivi à traiter.': '対応が必要なフォロー記録です。',
-  'Aucune relance planifiée.': '予定されているフォローはありません。'
+  'Aucune relance planifiée.': '予定されているフォローはありません。',
+  'Encaissement des dossiers actifs': '有効な登録の入金状況',
+  'Une lecture exacte des montants attendus, versés et restant à payer.': '請求予定額、支払済み額、未払い残高を正確に表示します。',
+  'Déjà versé': '支払済み',
+  'taux réel': '実際の入金率'
 }
