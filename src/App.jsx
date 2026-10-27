@@ -21,6 +21,7 @@ const loadPaymentsScreen = () => import('@/screens/payments')
 const loadAnalyticsScreen = () => import('@/screens/analytics')
 const loadConfigurationScreen = () => import('@/screens/configuration')
 const loadActionSheets = () => import('@/components/action-sheets')
+const loadManagementSheets = () => import('@/components/management-sheets')
 const StudentsScreen = lazy(loadStudentsScreen)
 const PaymentsScreen = lazy(loadPaymentsScreen)
 const AnalyticsScreen = lazy(loadAnalyticsScreen)
@@ -29,6 +30,10 @@ const NewStudentSheet = lazy(() => loadActionSheets().then(module => ({ default:
 const StudentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.StudentSheet })))
 const PaymentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.PaymentSheet })))
 const ReceiptSheet = lazy(() => loadActionSheets().then(module => ({ default: module.ReceiptSheet })))
+const EditStudentSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.EditStudentSheet })))
+const PaymentManagementSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.PaymentManagementSheet })))
+const PendingPaymentSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.PendingPaymentSheet })))
+const AssignPendingPaymentSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.AssignPendingPaymentSheet })))
 
 const readCachedRates = () => {
   try { return JSON.parse(localStorage.getItem('beva-exchange-rates') || 'null') || { XOF: 1 } }
@@ -46,6 +51,10 @@ export default function App() {
   const [studentSheet, setStudentSheet] = useState(null)
   const [paymentSheet, setPaymentSheet] = useState(null)
   const [receiptSheet, setReceiptSheet] = useState(null)
+  const [editStudentSheet, setEditStudentSheet] = useState(null)
+  const [paymentManagementSheet, setPaymentManagementSheet] = useState(null)
+  const [pendingPaymentOpen, setPendingPaymentOpen] = useState(false)
+  const [assignPendingSheet, setAssignPendingSheet] = useState(null)
   const [newStudentOpen, setNewStudentOpen] = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const [theme,setTheme]=useState(()=>localStorage.getItem('beva-theme')||'light')
@@ -139,7 +148,8 @@ export default function App() {
       if (isPreview) setData(current => preview(current))
       else { const result = await live(); if (result?.error) throw result.error; await refresh() }
       showToast(success)
-    } catch (mutationError) { showToast(mutationError.message || tr('L’opération a échoué.', 'The operation failed.'), true) }
+      return true
+    } catch (mutationError) { showToast(mutationError.message || tr('L’opération a échoué.', 'The operation failed.'), true); return false }
   }
 
   if (loading) return <LoadingScreen />
@@ -148,22 +158,30 @@ export default function App() {
   if (!data || !view) return <LoadingScreen />
 
   const shared = { data, view, intakeId, showToast, mutate }
+  const selectedStudent = studentSheet && (data.students.find(item => item.id === studentSheet.id) || studentSheet)
+  const studentToEdit = editStudentSheet && (data.students.find(item => item.id === editStudentSheet.id) || editStudentSheet)
+  const paymentToManage = paymentManagementSheet && (data.payments.find(item => item.id === paymentManagementSheet.id) || paymentManagementSheet)
+  const pendingToAssign = assignPendingSheet && (data.payments.find(item => item.id === assignPendingSheet.id) || assignPendingSheet)
   return <MotionConfig reducedMotion="user" transition={{ duration: .22, ease: [.22, 1, .36, 1] }}><div className={cn('beva-shell',useRefreshedUi&&'ui-refresh',theme==='dark'&&'dark')}>
     <Sidebar section={section} onSection={value => { setSection(value); setMobileMenu(false) }} staff={data.staff} onLogout={() => supabase.auth.signOut()} className={mobileMenu ? 'mobile-open' : ''} />
     <div className="beva-workspace"><Topbar section={section} intakes={data.intakes} intakeId={intakeId} setIntakeId={setIntakeId} onNewStudent={() => setNewStudentOpen(true)} onMenu={() => setMobileMenu(value => !value)} theme={theme} onToggleTheme={()=>setTheme(value=>value==='dark'?'light':'dark')} /><main className="beva-content"><AnimatePresence initial={false} mode="wait"><motion.div key={section} className="section-transition" initial={{ opacity: 0, scale: .996 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .998 }} transition={{ duration: .18, ease: [.22,1,.36,1] }}>
       <Suspense fallback={<SectionLoader />}>
         {section === 'dashboard' && <Dashboard {...shared} intake={data.intakes.find(item => item.id === intakeId)} onSection={setSection} onStudent={setStudentSheet} uiRefresh={useRefreshedUi} />}
         {section === 'students' && <StudentsScreen {...shared} onStudent={setStudentSheet} onNew={() => setNewStudentOpen(true)} />}
-        {section === 'payments' && <PaymentsScreen {...shared} onPayment={setPaymentSheet} onStudent={setStudentSheet} onReceipt={setReceiptSheet} />}
+        {section === 'payments' && <PaymentsScreen {...shared} onPayment={setPaymentSheet} onStudent={setStudentSheet} onReceipt={setReceiptSheet} onManagePayment={setPaymentManagementSheet} onPendingNew={() => setPendingPaymentOpen(true)} onPendingAssign={setAssignPendingSheet} />}
         {section === 'analytics' && <AnalyticsScreen {...shared} onStudent={setStudentSheet} />}
         {section === 'configuration' && <ConfigurationScreen {...shared} setIntakeId={setIntakeId} onSection={setSection} language={language} currency={currency} setLanguage={setLanguage} setCurrency={setCurrency} exchangeRates={exchangeRates} ratesUpdatedAt={ratesUpdatedAt} ratesStatus={ratesStatus} refreshExchangeRates={refreshExchangeRates} />}
       </Suspense>
     </motion.div></AnimatePresence></main><MobileNav section={section} onSection={setSection} /></div>
     <Suspense fallback={null}>
       {newStudentOpen&&<NewStudentSheet open={newStudentOpen} onOpenChange={setNewStudentOpen} data={data} intakeId={intakeId} mutate={mutate} />}
-      {studentSheet&&<StudentSheet student={studentSheet} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} onReceipt={setReceiptSheet} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />}
+      {selectedStudent&&<StudentSheet student={selectedStudent} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} onReceipt={setReceiptSheet} onEditStudent={student => { setStudentSheet(null); setEditStudentSheet(student) }} onManagePayment={payment => { setStudentSheet(null); setPaymentManagementSheet(payment) }} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />}
       {paymentSheet&&<PaymentSheet enrollment={paymentSheet} onClose={() => setPaymentSheet(null)} data={data} mutate={mutate} />}
       {receiptSheet&&<ReceiptSheet payment={receiptSheet} onClose={() => setReceiptSheet(null)} data={data} />}
+      {studentToEdit&&<EditStudentSheet student={studentToEdit} onClose={() => setEditStudentSheet(null)} data={data} mutate={mutate} />}
+      {paymentToManage&&<PaymentManagementSheet payment={paymentToManage} onClose={() => setPaymentManagementSheet(null)} data={data} mutate={mutate} onReceipt={payment => { setPaymentManagementSheet(null); setReceiptSheet(payment) }} />}
+      {pendingPaymentOpen&&<PendingPaymentSheet open={pendingPaymentOpen} onClose={() => setPendingPaymentOpen(false)} data={data} mutate={mutate} />}
+      {pendingToAssign&&<AssignPendingPaymentSheet payment={pendingToAssign} onClose={() => setAssignPendingSheet(null)} data={data} mutate={mutate} />}
     </Suspense>
     <AnimatePresence>{toast && <Toast {...toast} />}</AnimatePresence>{mobileMenu && <button type="button" className="mobile-overlay" aria-label="Fermer le menu" onClick={() => setMobileMenu(false)} />}
   </div></MotionConfig>
