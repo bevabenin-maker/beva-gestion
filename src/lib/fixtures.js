@@ -45,7 +45,8 @@ export const previewData = {
     { id: 'p5', enrollment_id: 'e3', amount: 90000, billing_month: 3, method: 'banque', paid_at: iso(5), reference: 'BEVA-PAY-005' },
     { id: 'p6', enrollment_id: 'e4', amount: 30000, billing_month: 1, method: 'mobile_money', paid_at: iso(6), reference: 'BEVA-PAY-006' },
     { id: 'p7', enrollment_id: 'e6', amount: 60000, billing_month: 2, method: 'especes', paid_at: iso(8), reference: 'BEVA-PAY-007' },
-    { id: 'p8', enrollment_id: 'e8', amount: 60000, billing_month: 1, method: 'mobile_money', paid_at: iso(9), reference: 'BEVA-PAY-008' }
+    { id: 'p8', enrollment_id: 'e8', amount: 60000, billing_month: 1, method: 'mobile_money', paid_at: iso(9), reference: 'BEVA-PAY-008' },
+    { id: 'p9', enrollment_id: null, payment_context: 'pending', pending_last_name: 'KIKI', pending_first_name: 'Ruth', pending_phone: '+229 90 00 00 48', pending_formation_id: 'anglais', pending_scholarship_status: true, amount: 30000, method: 'mobile_money', paid_at: iso(1), reference: 'BEVA-PAY-009', notes: 'Attend son affectation à la prochaine vague.' }
   ],
   studentNotes: [
     { id: 'n1', student_id: 's1', content: 'Paiera le reste le 24 octobre après réception de son salaire.', follow_up_on: '2026-10-24', created_by: 'preview-user', created_at: iso(1) },
