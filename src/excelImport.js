@@ -71,7 +71,7 @@ function toIsoDate(value) {
 }
 
 const studentStatusMap = new Map([
-  ['actif', 'actif'], ['suspendu', 'suspendu'], ['abandon', 'abandonne'], ['abandonne', 'abandonne']
+  ['actif', 'actif'], ['en attente', 'en_attente'], ['en attente prochaine vague', 'en_attente'], ['suspendu', 'suspendu'], ['abandon', 'abandonne'], ['abandonne', 'abandonne']
 ])
 const enrollmentStatusMap = new Map([
   ['disponible', 'disponible'], ['actif', 'inscrit'], ['inscrit', 'inscrit']
@@ -170,7 +170,7 @@ export function buildStudentImportTemplate(state, intakeId = state.intakeFilter)
     ['Téléphone', 'Saisissez-le comme texte, de préférence avec l’indicatif +229.'],
     ['Sexe', 'Femme ou Homme.'],
     ['Date', 'Format conseillé : JJ/MM/AAAA.'],
-    ['Statut élève', 'Actif, Suspendu ou Abandon. Laisser vide signifie Actif.'],
+    ['Statut élève', 'Actif, En attente, Suspendu ou Abandon. Laisser vide signifie Actif.'],
     ['Formation', formations.join(', ') || 'Aucune formation active trouvée.'],
     ['Statut formation', 'Disponible ou Actif. Laisser vide signifie Disponible. Seuls les dossiers Actifs créent un montant attendu.'],
     ['Mode formation', 'Présentiel ou En ligne. Laisser vide signifie Présentiel.'],
@@ -267,7 +267,7 @@ export function parseStudentImportRows(rows, state, intakeId = state.intakeFilte
     if (sexText && !sexMap.has(normalizeLabel(sexText))) issues.push('Sexe invalide : utilisez Femme ou Homme.')
     if (birthDateRaw !== null && birthDateRaw !== undefined && birthDateRaw !== '' && !birthDate) issues.push('Date de naissance invalide.')
     if (birthDate && birthDate > new Date().toISOString().slice(0, 10)) issues.push('La date de naissance ne peut pas être dans le futur.')
-    if (statusText && !status) issues.push('Statut élève invalide : utilisez Actif, Suspendu ou Abandon.')
+    if (statusText && !status) issues.push('Statut élève invalide : utilisez Actif, En attente, Suspendu ou Abandon.')
     if (followUpRaw !== null && followUpRaw !== undefined && followUpRaw !== '' && !followUpOn) issues.push('Date de relance invalide.')
     if (followUpOn && !note) issues.push('Ajoutez une note lorsqu’une date de relance est renseignée.')
 

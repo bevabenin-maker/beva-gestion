@@ -39,7 +39,7 @@ const studentAge = student => {
 }
 
 const displayCode = value => String(value ?? '').replace(/^IN-?/i, '') || ''
-const studentStatusLabel = status => ({ actif: 'Actif', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status || '')
+const studentStatusLabel = status => ({ actif: 'Actif', en_attente: 'En attente – prochaine vague', suspendu: 'Suspendu', abandonne: 'Abandon' }[status] || status || '')
 const enrollmentStatusLabel = status => ({ disponible: 'Disponible', inscrit: 'Actif', termine: 'Terminé', abandonne: 'Abandon' }[status] || status || '')
 const learningModeLabel = mode => mode === 'en_ligne' ? 'En ligne' : mode ? 'Présentiel' : ''
 const paymentMethodLabel = method => ({ especes: 'Espèces', mobile_money: 'Mobile Money', banque: 'Virement bancaire', carte: 'Carte bancaire', autre: 'Autre' }[method] || String(method || '').replaceAll('_', ' '))

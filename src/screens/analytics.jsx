@@ -35,7 +35,7 @@ function analyze(query, view, data) {
     return { kind:'formation', eyebrow:tr('Répartition pédagogique','Learning distribution'), title:tr('Élèves actifs par formation','Active students by course'), metric:view.activeEnrollments.length, unit:tr('dossiers actifs','active records'), detail:`${view.unclassified} ${tr('profils restent à classer','profiles remain to classify')}`, groups }
   }
   if (intent === 'status') {
-    const groups=[{label:tr('Actifs','Active'),value:view.students.filter(item=>item.status==='actif').length},{label:tr('Suspendus','Suspended'),value:view.students.filter(item=>item.status==='suspendu').length},{label:tr('Abandons','Withdrawn'),value:view.students.filter(item=>item.status==='abandonne').length},{label:tr('À classer','To classify'),value:view.unclassified}]
+    const groups=[{label:tr('Actifs','Active'),value:view.students.filter(item=>item.status==='actif').length},{label:tr('En attente','On hold'),value:view.students.filter(item=>item.status==='en_attente').length},{label:tr('Suspendus','Suspended'),value:view.students.filter(item=>item.status==='suspendu').length},{label:tr('Abandons','Withdrawn'),value:view.students.filter(item=>item.status==='abandonne').length},{label:tr('À classer','To classify'),value:view.unclassified}]
     return { kind:'status', eyebrow:tr('État des profils','Profile status'), title:tr('Statuts des étudiants','Student statuses'), metric:view.students.length, unit:tr('étudiants','students'), detail:tr('Lecture de la vague sélectionnée','Selected cohort view'), groups }
   }
   if (intent === 'followup') {
