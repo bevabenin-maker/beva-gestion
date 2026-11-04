@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { BarChart3, Bell, ChevronDown, Layers3, LayoutDashboard, LogOut, Menu, Moon, Plus, Search, Settings2, Sun, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, Bell, ChevronDown, ClipboardCheck, Layers3, LayoutDashboard, LogOut, Menu, Moon, Plus, Search, Settings2, Sun, Users, WalletCards, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { initials, roleLabel } from '@/lib/business'
@@ -8,6 +8,7 @@ import { tr } from '@/lib/preferences'
 const getSectionMeta = () => ({
   dashboard: { label: tr('Accueil', 'Home'), title: tr('Tableau de bord', 'Dashboard'), subtitle: tr('L’essentiel de BEVA en un regard', 'BEVA at a glance'), icon: LayoutDashboard },
   students: { label: tr('Étudiants', 'Students'), title: tr('Étudiants', 'Students'), subtitle: tr('Dossiers, formations et notes de suivi', 'Records, courses and follow-up notes'), icon: Users },
+  attendance: { label: tr('Présences', 'Attendance'), title: tr('Présences', 'Attendance'), subtitle: tr('Appels, absences et rattrapages', 'Roll calls, absences and make-up sessions'), icon: ClipboardCheck },
   payments: { label: tr('Paiements', 'Payments'), title: tr('Paiements', 'Payments'), subtitle: tr('Situation financière par formation', 'Financial position by course'), icon: WalletCards },
   analytics: { label: tr('Analyses', 'Analytics'), title: tr('Analyses', 'Analytics'), subtitle: tr('Interrogez les données en langage naturel', 'Explore data using natural language'), icon: BarChart3 },
   configuration: { label: tr('Configuration', 'Settings'), title: tr('Configuration', 'Settings'), subtitle: tr('Formations, vagues et préférences', 'Courses, cohorts and preferences'), icon: Settings2 }

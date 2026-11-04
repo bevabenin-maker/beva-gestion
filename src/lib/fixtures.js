@@ -54,4 +54,27 @@ export const previewData = {
     { id: 'n3', student_id: 's6', content: 'Doit confirmer son mode de suivi.', follow_up_on: '2026-10-25', created_by: 'preview-user', created_at: iso(2) }
   ],
   paymentAudit: []
+  ,teacherAccounts: [
+    { id:'ta1',formation_id:'anglais',professor_name:'Marie Luce BOTCHI',active:true,password_configured:true },
+    { id:'ta2',formation_id:'japonais',professor_name:'MIGAN Vini',active:true,password_configured:true },
+    { id:'ta3',formation_id:'design',professor_name:'Pascal Belankou',active:true,password_configured:false },
+    { id:'ta4',formation_id:'montage',professor_name:'Modeste NOUTCHET',active:true,password_configured:true },
+    { id:'ta5',formation_id:'ia',professor_name:'Kim',active:true,password_configured:true }
+  ],
+  attendanceSchedules: [
+    {id:'as1',formation_id:'anglais',weekday:2,start_time:'10:00',end_time:'12:00',label:'Speaking & Phonetics',active:true},
+    {id:'as2',formation_id:'anglais',weekday:4,start_time:'10:00',end_time:'12:00',label:'Classe principale',active:true},
+    {id:'as3',formation_id:'anglais',weekday:6,start_time:'19:00',end_time:'21:00',label:'Classe principale',active:true},
+    {id:'as4',formation_id:'japonais',weekday:3,start_time:'19:00',end_time:'21:00',label:'Classe unique',active:true},
+    {id:'as5',formation_id:'japonais',weekday:6,start_time:'10:00',end_time:'12:00',label:'Classe unique',active:true},
+    {id:'as6',formation_id:'design',weekday:1,start_time:'19:00',end_time:'21:00',label:'Classe unique',active:true},
+    {id:'as7',formation_id:'design',weekday:5,start_time:'19:00',end_time:'21:00',label:'Classe unique',active:true},
+    {id:'as8',formation_id:'montage',weekday:2,start_time:'19:00',end_time:'21:00',label:'Classe A',active:true},
+    {id:'as9',formation_id:'montage',weekday:4,start_time:'19:00',end_time:'21:00',label:'Classe A',active:true},
+    {id:'as10',formation_id:'ia',weekday:4,start_time:'19:00',end_time:'21:00',label:'Classe unique',active:true},
+    {id:'as11',formation_id:'ia',weekday:6,start_time:'12:00',end_time:'14:00',label:'Classe unique',active:true}
+  ],
+  attendanceSessions: [],
+  attendanceRecords: [],
+  attendanceMakeups: []
 }
