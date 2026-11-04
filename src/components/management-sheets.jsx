@@ -46,7 +46,7 @@ export function EditStudentSheet({ student, onClose, data, mutate }) {
         <Field label={tr('Adresse e-mail', 'Email address')}><Input name="email" type="email" defaultValue={student.email || ''} /></Field>
         <Field label={tr('Date de naissance', 'Date of birth')}><Input name="birth_date" type="date" defaultValue={student.birth_date || ''} /></Field>
         <Field label={tr('Sexe', 'Sex')}><Input name="sex" defaultValue={student.sex || ''} placeholder={tr('Facultatif', 'Optional')} /></Field>
-        <Field label={tr('Statut général', 'Overall status')}><Select name="status" defaultValue={student.status || 'actif'}><option value="actif">{tr('Actif', 'Active')}</option><option value="suspendu">{tr('Suspendu', 'Suspended')}</option><option value="abandonne">{tr('Abandon', 'Withdrawn')}</option></Select></Field>
+        <Field label={tr('Statut général', 'Overall status')}><Select name="status" defaultValue={student.status || 'actif'}><option value="actif">{tr('Actif', 'Active')}</option><option value="en_attente">{tr('En attente – prochaine vague', 'On hold – next cohort')}</option><option value="suspendu">{tr('Suspendu', 'Suspended')}</option><option value="abandonne">{tr('Abandon', 'Withdrawn')}</option></Select></Field>
       </div>
       <Field label={tr('Adresse', 'Address')}><Input name="address" defaultValue={student.address || ''} /></Field>
       <div className="sheet-actions"><Button type="button" variant="secondary" onClick={onClose}>{tr('Annuler', 'Cancel')}</Button><Button><Save/>{tr('Enregistrer les modifications', 'Save changes')}</Button></div>
