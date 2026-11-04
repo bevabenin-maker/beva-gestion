@@ -361,6 +361,8 @@ export const JAPANESE_TRANSLATIONS = {
   'Comprendre le reste.': '残高を把握。',
   'Actif': '有効',
   'Actifs': '有効',
+  'En attente – prochaine vague': '次期まで保留',
+  'En attente': '保留中',
   'À préciser': '未指定',
   'Administrateur': '管理者',
   'Direction': '運営責任者',
