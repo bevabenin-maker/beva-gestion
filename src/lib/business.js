@@ -4,7 +4,7 @@ export const money = value => formatMoney(value)
 export const compactMoney = value => formatMoney(value, { compact: true })
 export const displayCode = value => String(value ?? '').replace(/^IN-?/i, '') || '—'
 export const feeFor = scholarship => scholarship ? 90000 : 180000
-export const studentStatusLabel = status => ({ actif: tr('Actif', 'Active'), suspendu: tr('Suspendu', 'Suspended'), abandonne: tr('Abandon', 'Withdrawn') }[status] || status || tr('À préciser', 'To be specified'))
+export const studentStatusLabel = status => ({ actif: tr('Actif', 'Active'), en_attente: tr('En attente – prochaine vague', 'On hold – next cohort'), suspendu: tr('Suspendu', 'Suspended'), abandonne: tr('Abandon', 'Withdrawn') }[status] || status || tr('À préciser', 'To be specified'))
 export const enrollmentStatusLabel = status => ({ disponible: tr('Disponible', 'Available'), inscrit: tr('Actif', 'Active'), termine: tr('Terminé', 'Completed'), abandonne: tr('Abandon', 'Withdrawn') }[status] || status || tr('À préciser', 'To be specified'))
 export const roleLabel = role => ({ admin: tr('Administrateur', 'Administrator'), direction: tr('Direction', 'Management'), agent: tr('Agent', 'Officer') }[role] || role || tr('Personnel', 'Staff'))
 export const paymentMethodLabel = method => ({ especes: tr('Espèces', 'Cash'), mobile_money: 'Mobile Money', banque: tr('Virement', 'Bank transfer'), carte: tr('Carte', 'Card'), autre: tr('Autre', 'Other') }[method] || String(method || '—').replaceAll('_', ' '))
