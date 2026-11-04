@@ -9,6 +9,7 @@ const payments = readFileSync(new URL('../src/screens/payments.jsx', import.meta
 assert.match(app, /EditStudentSheet/, 'La modification des apprenants doit être reliée à l’application.')
 assert.match(studentSheet, /Modifier les informations/, 'La fiche apprenant doit exposer la modification du profil.')
 assert.match(sheets, /from\('students'\)\.update\(payload\)\.eq\('id', student\.id\)/, 'La fiche doit modifier uniquement l’apprenant ciblé.')
+assert.match(sheets, /option value="en_attente"/, 'Un apprenant existant doit pouvoir être placé en attente de la prochaine vague.')
 
 assert.match(sheets, /from\('payments'\)\.update\(payload\)\.eq\('id', current\.id\)/, 'Un paiement doit pouvoir être modifié avec un filtre par identifiant.')
 assert.match(sheets, /payment_context: 'pending'/, 'La mise en attente doit être restaurée.')
