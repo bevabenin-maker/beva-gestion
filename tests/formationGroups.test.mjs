@@ -5,6 +5,7 @@ const students = [
   { id: 'active', status: 'actif' },
   { id: 'available', status: 'actif' },
   { id: 'suspended', status: 'suspendu' },
+  { id: 'pending', status: 'en_attente' },
   { id: 'without', status: 'actif' },
   { id: 'multi', status: 'actif' }
 ]
@@ -13,6 +14,7 @@ const enrollments = [
   { student_id: 'active', formation_id: 'anglais', status: 'inscrit' },
   { student_id: 'available', formation_id: 'anglais', status: 'disponible' },
   { student_id: 'suspended', formation_id: 'anglais', status: 'inscrit' },
+  { student_id: 'pending', formation_id: 'anglais', status: 'inscrit' },
   { student_id: 'multi', formation_id: 'anglais', status: 'inscrit' },
   { student_id: 'multi', formation_id: 'japonais', status: 'inscrit' }
 ]
@@ -20,6 +22,6 @@ const enrollments = [
 const result = classifyStudentsByFormation({ students, enrollments, formations })
 assert.deepEqual(result.groups[0].students.map(student => student.id), ['active', 'multi'])
 assert.deepEqual(result.groups[1].students.map(student => student.id), ['multi'])
-assert.deepEqual(result.unclassifiedStudents.map(student => student.id), ['available', 'suspended', 'without'])
+assert.deepEqual(result.unclassifiedStudents.map(student => student.id), ['available', 'suspended', 'pending', 'without'])
 
 console.log('Test classement des élèves par formation : OK')
