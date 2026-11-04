@@ -1,0 +1,11 @@
+-- Indexes de jointure pour conserver un suivi fluide lorsque l'historique grandit.
+create index teacher_access_accounts_created_by_idx on public.teacher_access_accounts(created_by);
+create index teacher_access_accounts_updated_by_idx on public.teacher_access_accounts(updated_by);
+create index teacher_access_sessions_account_idx on public.teacher_access_sessions(teacher_account_id);
+create index attendance_sessions_formation_idx on public.attendance_sessions(formation_id);
+create index attendance_sessions_schedule_idx on public.attendance_sessions(schedule_id);
+create index attendance_sessions_teacher_idx on public.attendance_sessions(recorded_by_teacher_account_id);
+create index attendance_sessions_staff_idx on public.attendance_sessions(recorded_by_staff_id);
+create index attendance_records_enrollment_idx on public.attendance_records(enrollment_id);
+create index attendance_makeups_teacher_idx on public.attendance_makeups(recorded_by_teacher_account_id);
+create index attendance_makeups_staff_idx on public.attendance_makeups(recorded_by_staff_id);

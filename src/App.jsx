@@ -10,6 +10,7 @@ import { BrandMark, MobileNav, Sidebar, Topbar } from '@/components/app-chrome'
 import Dashboard from '@/screens/dashboard'
 import { cn } from '@/lib/utils'
 import { applyPreferences, tr } from '@/lib/preferences'
+import { teacherAttendanceApi } from '@/lib/attendance'
 
 const isPreview = new URLSearchParams(window.location.search).get('preview') === '1'
 // The refreshed interface is the default. Keeping the classic presentation
@@ -20,12 +21,16 @@ const loadStudentsScreen = () => import('@/screens/students')
 const loadPaymentsScreen = () => import('@/screens/payments')
 const loadAnalyticsScreen = () => import('@/screens/analytics')
 const loadConfigurationScreen = () => import('@/screens/configuration')
+const loadAttendanceScreen = () => import('@/screens/attendance')
+const loadTeacherPortal = () => import('@/components/teacher-portal')
 const loadActionSheets = () => import('@/components/action-sheets')
 const loadManagementSheets = () => import('@/components/management-sheets')
 const StudentsScreen = lazy(loadStudentsScreen)
 const PaymentsScreen = lazy(loadPaymentsScreen)
 const AnalyticsScreen = lazy(loadAnalyticsScreen)
 const ConfigurationScreen = lazy(loadConfigurationScreen)
+const AttendanceScreen = lazy(loadAttendanceScreen)
+const TeacherPortal = lazy(loadTeacherPortal)
 const NewStudentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.NewStudentSheet })))
 const StudentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.StudentSheet })))
 const PaymentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.PaymentSheet })))
@@ -42,6 +47,9 @@ const readCachedRates = () => {
 
 export default function App() {
   const [session, setSession] = useState(isPreview ? { user: previewUser } : null)
+  const [teacherToken,setTeacherToken]=useState(()=>isPreview?'':localStorage.getItem('beva-teacher-token')||'')
+  const [teacherContext,setTeacherContext]=useState(null)
+  const [teacherLoading,setTeacherLoading]=useState(()=>!isPreview&&Boolean(localStorage.getItem('beva-teacher-token')))
   const [data, setData] = useState(isPreview ? previewData : null)
   const [loading, setLoading] = useState(!isPreview)
   const [error, setError] = useState('')
@@ -120,6 +128,16 @@ export default function App() {
     return () => { alive = false; listener.subscription.unsubscribe() }
   }, [])
 
+  useEffect(()=>{
+    if(isPreview||!teacherToken){setTeacherLoading(false);return}
+    let alive=true
+    setTeacherLoading(true)
+    teacherAttendanceApi.context(teacherToken).then(result=>{if(alive)setTeacherContext(result.context)}).catch(()=>{
+      localStorage.removeItem('beva-teacher-token');if(alive){setTeacherToken('');setTeacherContext(null)}
+    }).finally(()=>{if(alive)setTeacherLoading(false)})
+    return()=>{alive=false}
+  },[teacherToken])
+
   useEffect(() => {
     if (isPreview || !userId) return
     setLoading(true)
@@ -132,7 +150,7 @@ export default function App() {
 
   useEffect(() => {
     if (!data) return
-    const prefetch = () => Promise.allSettled([loadStudentsScreen(), loadPaymentsScreen(), loadAnalyticsScreen(), loadConfigurationScreen()])
+    const prefetch = () => Promise.allSettled([loadStudentsScreen(), loadPaymentsScreen(), loadAnalyticsScreen(), loadConfigurationScreen(),loadAttendanceScreen()])
     if ('requestIdleCallback' in window) {
       const id = window.requestIdleCallback(prefetch, { timeout: 2400 })
       return () => window.cancelIdleCallback(id)
@@ -152,8 +170,10 @@ export default function App() {
     } catch (mutationError) { showToast(mutationError.message || tr('L’opération a échoué.', 'The operation failed.'), true); return false }
   }
 
+  if (teacherLoading) return <LoadingScreen />
+  if (teacherContext) return <Suspense fallback={<LoadingScreen/>}><TeacherPortal token={teacherToken} initialContext={teacherContext} onContext={setTeacherContext} theme={theme} onToggleTheme={()=>setTheme(value=>value==='dark'?'light':'dark')} onLogout={()=>{localStorage.removeItem('beva-teacher-token');setTeacherToken('');setTeacherContext(null)}}/></Suspense>
   if (loading) return <LoadingScreen />
-  if (!session) return <LoginScreen onError={setError} error={error} theme={theme} uiRefresh={useRefreshedUi} onToggleTheme={()=>setTheme(value=>value==='dark'?'light':'dark')} />
+  if (!session) return <LoginScreen onError={setError} error={error} theme={theme} uiRefresh={useRefreshedUi} onToggleTheme={()=>setTheme(value=>value==='dark'?'light':'dark')} onTeacherLogin={result=>{localStorage.setItem('beva-teacher-token',result.token);setTeacherToken(result.token);setTeacherContext(result.context)}} />
   if (error && !data) return <ErrorScreen error={error} />
   if (!data || !view) return <LoadingScreen />
 
@@ -169,6 +189,7 @@ export default function App() {
         {section === 'dashboard' && <Dashboard {...shared} intake={data.intakes.find(item => item.id === intakeId)} onSection={setSection} onStudent={setStudentSheet} uiRefresh={useRefreshedUi} />}
         {section === 'students' && <StudentsScreen {...shared} onStudent={setStudentSheet} onNew={() => setNewStudentOpen(true)} />}
         {section === 'payments' && <PaymentsScreen {...shared} onPayment={setPaymentSheet} onStudent={setStudentSheet} onReceipt={setReceiptSheet} onManagePayment={setPaymentManagementSheet} onPendingNew={() => setPendingPaymentOpen(true)} onPendingAssign={setAssignPendingSheet} />}
+        {section === 'attendance' && <AttendanceScreen {...shared} onStudent={setStudentSheet} />}
         {section === 'analytics' && <AnalyticsScreen {...shared} onStudent={setStudentSheet} />}
         {section === 'configuration' && <ConfigurationScreen {...shared} setIntakeId={setIntakeId} onSection={setSection} language={language} currency={currency} setLanguage={setLanguage} setCurrency={setCurrency} exchangeRates={exchangeRates} ratesUpdatedAt={ratesUpdatedAt} ratesStatus={ratesStatus} refreshExchangeRates={refreshExchangeRates} />}
       </Suspense>
@@ -190,10 +211,11 @@ export default function App() {
 function SectionLoader() { return <div className="section-loader" aria-label="Chargement de la rubrique"><i/><i/><i/></div> }
 function LoadingScreen() { return <div className="loading-screen"><motion.div className="grid justify-items-center gap-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><BrandMark large /><div className="grid gap-2 text-center"><strong className="text-sm">{tr('Préparation de votre espace', 'Preparing your workspace')}</strong><span>{tr('Synchronisation des dossiers BEVA…', 'Synchronising BEVA records…')}</span></div><div className="loading-track"><motion.i animate={{ x: ['-100%','200%'] }} transition={{ duration: 1.05, repeat: Infinity, ease: 'easeInOut' }} /></div></motion.div></div> }
 
-function LoginScreen({ error, onError, theme, onToggleTheme, uiRefresh }) {
-  const [forgot, setForgot] = useState(false); const [busy, setBusy] = useState(false)
-  async function submit(event) { event.preventDefault(); setBusy(true); onError(''); const form = new FormData(event.currentTarget); const email = form.get('email'); const result = forgot ? await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split('#')[0] }) : await supabase.auth.signInWithPassword({ email, password: form.get('password') }); if (result.error) onError(result.error.message); else if (forgot) onError('Un lien sécurisé a été envoyé à votre adresse e-mail.'); setBusy(false) }
-  return <div className={cn('login-v2',uiRefresh&&'ui-refresh-login')}><section className="login-story"><BrandMark large /><div><p className="login-eyebrow">BEVA · {tr('Gestion interne', 'Internal management')}</p><h1>{tr('Gérer l’essentiel.', 'Manage what matters.')}<br/><span>{tr('Comprendre le reste.', 'Understand the rest.')}</span></h1><p>{tr('Un espace unique pour suivre les étudiants, les formations et les paiements avec clarté.', 'One clear workspace for students, courses and payments.')}</p></div><small>{tr('Accès réservé au personnel autorisé', 'Access restricted to authorised staff')}</small></section><section className="login-form-wrap"><button type="button" className="theme-switch-v2 login-theme-switch" onClick={onToggleTheme} aria-label={theme==='dark'?tr('Activer le mode clair', 'Enable light mode'):tr('Activer le mode sombre', 'Enable dark mode')}><span>{theme==='dark'?<Sun/>:<Moon/>}</span><b>{theme==='dark'?tr('Mode clair', 'Light mode'):tr('Mode sombre', 'Dark mode')}</b></button><motion.form className="login-form" onSubmit={submit} initial={{ opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{duration:.24,ease:[.22,1,.36,1]}}><Badge variant="info"><Activity/> {tr('Espace sécurisé', 'Secure workspace')}</Badge><h2>{forgot ? tr('Réinitialiser le mot de passe', 'Reset password') : tr('Heureux de vous revoir', 'Welcome back')}</h2><p>{forgot ? tr('Nous vous enverrons un lien de récupération.', 'We will send you a recovery link.') : tr('Connectez-vous pour ouvrir votre tableau de bord.', 'Sign in to open your dashboard.')}</p><label>{tr('Adresse e-mail', 'Email address')}<input name="email" type="email" required autoComplete="email" placeholder="vous@beva.bj" /></label>{!forgot && <label>{tr('Mot de passe', 'Password')}<input name="password" type="password" required autoComplete="current-password" /></label>}<p className={cn('min-h-5 text-xs', error?.startsWith('Un lien') ? 'text-emerald-600' : 'text-destructive')}>{error}</p><Button className="w-full" size="lg" disabled={busy}>{busy ? tr('Veuillez patienter…', 'Please wait…') : forgot ? tr('Envoyer le lien', 'Send link') : tr('Se connecter', 'Sign in')}<ArrowRight /></Button><button type="button" className="text-xs font-semibold text-primary" onClick={() => { setForgot(value => !value); onError('') }}>{forgot ? tr('Retour à la connexion', 'Back to sign in') : tr('Mot de passe oublié ?', 'Forgot password?')}</button></motion.form></section></div>
+function LoginScreen({ error, onError, theme, onToggleTheme, uiRefresh, onTeacherLogin }) {
+  const [forgot, setForgot] = useState(false); const [busy, setBusy] = useState(false); const [mode,setMode]=useState('staff');const [courses,setCourses]=useState([]);const [coursesLoading,setCoursesLoading]=useState(false)
+  async function chooseMode(next){setMode(next);setForgot(false);onError('');if(next==='teacher'&&!courses.length){setCoursesLoading(true);try{const result=await teacherAttendanceApi.listCourses();setCourses(result.courses||[])}catch(loadError){onError(loadError.message)}finally{setCoursesLoading(false)}}}
+  async function submit(event) { event.preventDefault(); setBusy(true); onError(''); const form = new FormData(event.currentTarget);try{if(mode==='teacher'){const result=await teacherAttendanceApi.login(form.get('teacher_account_id'),form.get('password'));onTeacherLogin(result)}else{const email = form.get('email'); const result = forgot ? await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split('#')[0] }) : await supabase.auth.signInWithPassword({ email, password: form.get('password') }); if (result.error) throw result.error; if (forgot) onError('Un lien sécurisé a été envoyé à votre adresse e-mail.')}}catch(submitError){onError(submitError.message)}finally{setBusy(false)} }
+  return <div className={cn('login-v2',uiRefresh&&'ui-refresh-login')}><section className="login-story"><BrandMark large /><div><p className="login-eyebrow">BEVA · {tr('Gestion interne', 'Internal management')}</p><h1>{tr('Gérer l’essentiel.', 'Manage what matters.')}<br/><span>{tr('Comprendre le reste.', 'Understand the rest.')}</span></h1><p>{tr('Un espace unique pour suivre les étudiants, les formations et les paiements avec clarté.', 'One clear workspace for students, courses and payments.')}</p></div><small>{tr('Accès réservé au personnel autorisé', 'Access restricted to authorised staff')}</small></section><section className="login-form-wrap"><button type="button" className="theme-switch-v2 login-theme-switch" onClick={onToggleTheme} aria-label={theme==='dark'?tr('Activer le mode clair', 'Enable light mode'):tr('Activer le mode sombre', 'Enable dark mode')}><span>{theme==='dark'?<Sun/>:<Moon/>}</span><b>{theme==='dark'?tr('Mode clair', 'Light mode'):tr('Mode sombre', 'Dark mode')}</b></button><motion.form className="login-form" onSubmit={submit} initial={{ opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{duration:.24,ease:[.22,1,.36,1]}}><div className="login-access-tabs"><button type="button" className={mode==='staff'?'active':''} onClick={()=>chooseMode('staff')}>Personnel BEVA</button><button type="button" className={mode==='teacher'?'active':''} onClick={()=>chooseMode('teacher')}>Professeur</button></div><Badge variant="info"><Activity/> {mode==='teacher'?'Espace pédagogique':tr('Espace sécurisé', 'Secure workspace')}</Badge><h2>{mode==='teacher'?'Faire l’appel':forgot ? tr('Réinitialiser le mot de passe', 'Reset password') : tr('Heureux de vous revoir', 'Welcome back')}</h2><p>{mode==='teacher'?'Choisissez votre formation puis saisissez le mot de passe correspondant.':forgot ? tr('Nous vous enverrons un lien de récupération.', 'We will send you a recovery link.') : tr('Connectez-vous pour ouvrir votre tableau de bord.', 'Sign in to open your dashboard.')}</p>{mode==='teacher'?<label>Formation<select name="teacher_account_id" required defaultValue=""><option value="">{coursesLoading?'Chargement…':courses.length?'Choisir une formation':'Accès en cours de configuration'}</option>{courses.map(item=><option key={item.id} value={item.id}>{item.formationName} · {item.professorName}</option>)}</select></label>:<label>{tr('Adresse e-mail', 'Email address')}<input name="email" type="email" required autoComplete="email" placeholder="vous@beva.bj" /></label>}{(!forgot||mode==='teacher')&&<label>{tr('Mot de passe', 'Password')}<input name="password" type="password" required autoComplete="current-password" /></label>}<p className={cn('min-h-5 text-xs', error?.startsWith('Un lien') ? 'text-emerald-600' : 'text-destructive')}>{error}</p><Button className="w-full" size="lg" disabled={busy||mode==='teacher'&&!courses.length}>{busy ? tr('Veuillez patienter…', 'Please wait…') : mode==='teacher'?'Accéder à mes cours':forgot ? tr('Envoyer le lien', 'Send link') : tr('Se connecter', 'Sign in')}<ArrowRight /></Button>{mode==='staff'&&<button type="button" className="text-xs font-semibold text-primary" onClick={() => { setForgot(value => !value); onError('') }}>{forgot ? tr('Retour à la connexion', 'Back to sign in') : tr('Mot de passe oublié ?', 'Forgot password?')}</button>}</motion.form></section></div>
 }
 
 function ErrorScreen({ error }) { return <div className="grid min-h-screen place-items-center bg-background p-6"><div className="max-w-md rounded-3xl border bg-card p-8 text-center shadow-xl"><BrandMark /><h1 className="mt-5 text-xl font-bold">{tr('BEVA Gestion n’a pas pu démarrer', 'BEVA Gestion could not start')}</h1><p className="mt-3 text-sm text-muted-foreground">{error}</p><Button className="mt-6" onClick={() => window.location.reload()}>{tr('Réessayer', 'Try again')}</Button></div></div> }
