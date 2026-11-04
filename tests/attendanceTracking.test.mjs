@@ -32,6 +32,9 @@ assert.match(portal, /Les .* autres seront marqués absents, non prévenus et sa
 assert.match(portal, /Cours non tenu/)
 assert.match(portal, /Rattrapage effectué aujourd’hui/)
 assert.match(portal, /Ces séances ne sont pas comptées comme des absences/)
+assert.match(portal, /function toggleAllPresent\(\)/)
+assert.match(portal, /allPresent\?'Tout désélectionner':'Tout le monde est présent'/)
+assert.match(portal, /if\(allPresent\)\{setPresentIds\(new Set\(\)\);setLateIds\(new Set\(\)\)/)
 
 // Deux portes d'entrée séparées, et la présence reste utilisable sur téléphone.
 assert.match(app, /Personnel BEVA/)
