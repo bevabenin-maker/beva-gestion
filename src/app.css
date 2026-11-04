@@ -365,5 +365,5 @@ html.dark body{background:#07111f}
 .teacher-config-title{grid-template-columns:44px minmax(0,1fr)}
 .teacher-config-title>div{min-width:0}
 .teacher-config-title>.teacher-avatar{grid-row:1/span 2;align-self:start}
-.teacher-config-title>span:last-child{grid-column:2;justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:720px){.teacher-config-title{grid-template-columns:40px minmax(0,1fr)}.teacher-config-title>span:last-child{grid-column:2}}
+.teacher-config-title>span:last-child{grid-column:1/-1;justify-self:start;width:max-content;max-width:none;height:auto;min-height:0;margin-left:55px;overflow:visible;line-height:1.2;text-overflow:clip;white-space:nowrap}
+@media(max-width:720px){.teacher-config-title{grid-template-columns:40px minmax(0,1fr)}.teacher-config-title>span:last-child{grid-column:1/-1;margin-left:51px}}
