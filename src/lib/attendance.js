@@ -3,6 +3,8 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabase } from '@/lib/supabase
 const ENDPOINT = `${SUPABASE_URL}/functions/v1/beva-attendance`
 
 const ERROR_MESSAGES = {
+  PASSWORD_READ_FAILED: 'Impossible de consulter ce mot de passe. Réessayez.',
+  PASSWORD_SAVE_FAILED: 'Le mot de passe n’a pas pu être enregistré.',
   INVALID_TEACHER_LOGIN: 'Formation ou mot de passe incorrect.',
   TEACHER_LOCKED: 'Trop de tentatives. Réessayez dans 15 minutes.',
   TEACHER_SESSION_EXPIRED: 'Votre session professeur a expiré. Reconnectez-vous.',
@@ -39,6 +41,7 @@ export const teacherAttendanceApi = {
 }
 
 export const attendanceAdminApi = {
+  revealTeacherPassword: accountId => request('reveal_teacher_password', { accountId }, { staff: true }),
   saveTeacherAccount: payload => request('save_teacher_account', payload, { staff: true }),
 }
 
