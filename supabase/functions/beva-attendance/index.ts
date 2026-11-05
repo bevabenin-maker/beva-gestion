@@ -71,7 +71,7 @@ async function requireTeacher(req: Request) {
   return { session, account }
 }
 
-async function requireManagement(req: Request) {
+async function requireStaff(req: Request) {
   const authorization = req.headers.get("authorization") || ""
   const jwt = authorization.replace(/^Bearer\s+/i, "").trim()
   if (!jwt) throw new Error("STAFF_UNAUTHENTICATED")
@@ -82,8 +82,25 @@ async function requireManagement(req: Request) {
   if (userError || !userData.user) throw new Error("STAFF_UNAUTHENTICATED")
   const { data: staff } = await admin.from("staff_members").select("user_id,full_name,role,active")
     .eq("user_id", userData.user.id).eq("active", true).maybeSingle()
-  if (!staff || !["admin", "direction"].includes(staff.role)) throw new Error("STAFF_FORBIDDEN")
+  if (!staff || !["admin", "direction", "agent"].includes(staff.role)) throw new Error("STAFF_FORBIDDEN")
   return staff
+}
+
+async function requireManagement(req: Request) {
+  const staff = await requireStaff(req)
+  if (!["admin", "direction"].includes(staff.role)) throw new Error("STAFF_FORBIDDEN")
+  return staff
+}
+
+async function revealTeacherPassword(req: Request, body: any) {
+  const staff = await requireStaff(req)
+  const accountId = String(body.accountId || "")
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new Error("INVALID_TEACHER_ACCOUNT")
+  const { data, error } = await admin.rpc("read_teacher_password", {
+    p_account_id: accountId, p_staff_id: staff.user_id,
+  })
+  if (error) throw new Error("PASSWORD_READ_FAILED")
+  return { password: data || null }
 }
 
 async function activeIntake() {
@@ -214,14 +231,11 @@ async function saveTeacherAccount(req: Request, body: any) {
   if (password) {
     const salt = randomValue(24)
     const hash = await passwordHash(password, salt)
-    const { error } = await admin.from("teacher_account_credentials").upsert({
-      teacher_account_id: account.id, password_hash: hash, password_salt: salt,
-      failed_attempts: 0, locked_until: null, password_changed_at: new Date().toISOString(),
-    }, { onConflict: "teacher_account_id" })
-    if (error) throw error
-    await admin.from("teacher_access_accounts").update({ password_configured: true }).eq("id", account.id)
-    await admin.from("teacher_access_sessions").update({ revoked_at: new Date().toISOString() })
-      .eq("teacher_account_id", account.id).is("revoked_at", null)
+    const { error } = await admin.rpc("save_teacher_password", {
+      p_account_id: account.id, p_password: password, p_hash: hash,
+      p_salt: salt, p_staff_id: staff.user_id,
+    })
+    if (error) throw new Error("PASSWORD_SAVE_FAILED")
   }
   return { ok: true }
 }
@@ -322,6 +336,7 @@ Deno.serve(async (req: Request) => {
           .eq("token_hash", await sha256(token)).is("revoked_at", null)
         return json({ ok: true })
       }
+      case "reveal_teacher_password": return json(await revealTeacherPassword(req, body))
       case "save_teacher_account": return json(await saveTeacherAccount(req, body))
       case "submit_attendance": return json(await submitAttendance(req, body))
       case "cancel_session": return json(await cancelSession(req, body))
