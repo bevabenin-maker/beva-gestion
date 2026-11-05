@@ -35,6 +35,7 @@ const NewStudentSheet = lazy(() => loadActionSheets().then(module => ({ default:
 const StudentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.StudentSheet })))
 const PaymentSheet = lazy(() => loadActionSheets().then(module => ({ default: module.PaymentSheet })))
 const ReceiptSheet = lazy(() => loadActionSheets().then(module => ({ default: module.ReceiptSheet })))
+const ResumeStudentSheet = lazy(() => import('@/components/resume-student-sheet').then(module => ({ default: module.ResumeStudentSheet })))
 const EditStudentSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.EditStudentSheet })))
 const PaymentManagementSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.PaymentManagementSheet })))
 const PendingPaymentSheet = lazy(() => loadManagementSheets().then(module => ({ default: module.PendingPaymentSheet })))
@@ -59,6 +60,7 @@ export default function App() {
   const [studentSheet, setStudentSheet] = useState(null)
   const [paymentSheet, setPaymentSheet] = useState(null)
   const [receiptSheet, setReceiptSheet] = useState(null)
+  const [resumeStudentSheet, setResumeStudentSheet] = useState(null)
   const [editStudentSheet, setEditStudentSheet] = useState(null)
   const [paymentManagementSheet, setPaymentManagementSheet] = useState(null)
   const [pendingPaymentOpen, setPendingPaymentOpen] = useState(false)
@@ -196,9 +198,10 @@ export default function App() {
     </motion.div></AnimatePresence></main><MobileNav section={section} onSection={setSection} /></div>
     <Suspense fallback={null}>
       {newStudentOpen&&<NewStudentSheet open={newStudentOpen} onOpenChange={setNewStudentOpen} data={data} intakeId={intakeId} mutate={mutate} />}
-      {selectedStudent&&<StudentSheet student={selectedStudent} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} onReceipt={setReceiptSheet} onEditStudent={student => { setStudentSheet(null); setEditStudentSheet(student) }} onManagePayment={payment => { setStudentSheet(null); setPaymentManagementSheet(payment) }} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />}
+      {selectedStudent&&<StudentSheet student={selectedStudent} onClose={() => setStudentSheet(null)} data={data} view={view} mutate={mutate} onReceipt={setReceiptSheet} onRelatedStudent={setStudentSheet} onResumeStudent={student => { setStudentSheet(null); setResumeStudentSheet(student) }} onEditStudent={student => { setStudentSheet(null); setEditStudentSheet(student) }} onManagePayment={payment => { setStudentSheet(null); setPaymentManagementSheet(payment) }} onPayment={enrollment => { setStudentSheet(null); setPaymentSheet(enrollment) }} />}
       {paymentSheet&&<PaymentSheet enrollment={paymentSheet} onClose={() => setPaymentSheet(null)} data={data} mutate={mutate} />}
       {receiptSheet&&<ReceiptSheet payment={receiptSheet} onClose={() => setReceiptSheet(null)} data={data} />}
+      {resumeStudentSheet&&<ResumeStudentSheet student={data.students.find(item => item.id === resumeStudentSheet.id) || resumeStudentSheet} data={data} mutate={mutate} onClose={() => setResumeStudentSheet(null)} onResumed={targetId => { setResumeStudentSheet(null); setIntakeId(targetId); setSection('students') }} />}
       {studentToEdit&&<EditStudentSheet student={studentToEdit} onClose={() => setEditStudentSheet(null)} data={data} mutate={mutate} />}
       {paymentToManage&&<PaymentManagementSheet payment={paymentToManage} onClose={() => setPaymentManagementSheet(null)} data={data} mutate={mutate} onReceipt={payment => { setPaymentManagementSheet(null); setReceiptSheet(payment) }} />}
       {pendingPaymentOpen&&<PendingPaymentSheet open={pendingPaymentOpen} onClose={() => setPendingPaymentOpen(false)} data={data} mutate={mutate} />}
