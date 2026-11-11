@@ -267,12 +267,14 @@ async function submitAttendance(req: Request, body: any) {
   await admin.from("attendance_records").delete().eq("session_id", attendanceSession.id)
   const rows = enrollments.map((enrollment: any) => {
     const present = presentIds.has(enrollment.id)
-    const detail = details[enrollment.id] || {}
+    const late = lateIds.has(enrollment.id)
+    const detail = (late ? body.lateDetails?.[enrollment.id] : details[enrollment.id]) || {}
+    const reason = ["sante", "travail", "famille", "transport", "connexion", "finance", "deplacement", "autre"].includes(detail.reasonCode) ? detail.reasonCode : null
     return {
       session_id: attendanceSession.id, enrollment_id: enrollment.id, student_id: enrollment.student_id,
       status: present ? (lateIds.has(enrollment.id) ? "late" : "present") : "absent",
       notice_status: !present && detail.notified ? "notified" : "not_notified",
-      reason_code: !present && detail.notified ? (detail.reasonCode || null) : null,
+      reason_code: !present || late ? reason : null,
       note: !present && detail.note ? String(detail.note).slice(0, 500) : null,
       learning_mode: enrollment.learning_mode || "presentiel",
     }
