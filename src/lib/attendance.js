@@ -1,5 +1,10 @@
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabase } from '@/lib/supabase'
 
+export const ATTENDANCE_REASONS = [
+  ['sante','Santé'],['travail','Travail'],['famille','Famille'],['transport','Transport'],
+  ['connexion','Connexion'],['finance','Difficulté financière'],['deplacement','Déplacement'],['autre','Autre'],
+]
+
 const ENDPOINT = `${SUPABASE_URL}/functions/v1/beva-attendance`
 
 const ERROR_MESSAGES = {
@@ -95,12 +100,13 @@ export function buildAttendanceWeek(data, intakeId, weekStart, today = isoDate(n
   const enrollmentById = new Map((data.enrollments || []).map(item => [item.id, item]))
   const studentById = new Map((data.students || []).map(item => [item.id, item]))
   const riskMap = new Map()
-  absentRows.filter(item => !madeUpIds.has(item.id)).forEach(item => {
+  records.filter(item => item.status === 'late' || (item.status === 'absent' && !madeUpIds.has(item.id))).forEach(item => {
     const enrollment = enrollmentById.get(item.enrollment_id)
     const student = studentById.get(item.student_id)
     if (!enrollment || !student) return
-    const current = riskMap.get(student.id) || { student, count: 0, formationIds: new Set(), notified: 0 }
+    const current = riskMap.get(student.id) || { student, count: 0, formationIds: new Set(), notified: 0, incidents: [] }
     current.count += 1
+    current.incidents.push({ id: item.id, status: item.status, reason: item.reason_code, note: item.note, notified: item.notice_status === 'notified', formationId: enrollment.formation_id })
     current.formationIds.add(enrollment.formation_id)
     if (item.notice_status === 'notified') current.notified += 1
     riskMap.set(student.id, current)

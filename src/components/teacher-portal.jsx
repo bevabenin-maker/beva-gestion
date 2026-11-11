@@ -4,14 +4,9 @@ import { AlertCircle, BookOpenCheck, CalendarDays, Check, CheckCircle2, ChevronL
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/app-chrome'
-import { addDays, buildAttendanceWeek, mondayOf, teacherAttendanceApi } from '@/lib/attendance'
+import { ATTENDANCE_REASONS, addDays, buildAttendanceWeek, mondayOf, teacherAttendanceApi } from '@/lib/attendance'
 
 const DAY_LABELS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
-const REASONS = [
-  ['sante','Santé'],['travail','Travail'],['famille','Famille'],['transport','Transport'],
-  ['connexion','Connexion'],['finance','Difficulté financière'],['deplacement','Déplacement'],['autre','Autre'],
-]
-
 const fullName = enrollment => `${enrollment.students?.last_name || ''} ${enrollment.students?.first_name || ''}`.trim()
 
 export default function TeacherPortal({ token, initialContext, onContext, onLogout, theme, onToggleTheme }) {
@@ -21,6 +16,7 @@ export default function TeacherPortal({ token, initialContext, onContext, onLogo
   const [presentIds,setPresentIds]=useState(new Set())
   const [lateIds,setLateIds]=useState(new Set())
   const [absentDetails,setAbsentDetails]=useState({})
+  const [lateDetails,setLateDetails]=useState({})
   const [makeupIds,setMakeupIds]=useState(new Set())
   const [search,setSearch]=useState('')
   const [confirming,setConfirming]=useState(false)
@@ -43,8 +39,9 @@ export default function TeacherPortal({ token, initialContext, onContext, onLogo
     const records=todayRecords
     setPresentIds(new Set(records.filter(item=>item.status==='present'||item.status==='late').map(item=>item.enrollment_id)))
     setLateIds(new Set(records.filter(item=>item.status==='late').map(item=>item.enrollment_id)))
-    setAbsentDetails(Object.fromEntries(records.filter(item=>item.status==='absent'&&item.notice_status==='notified').map(item=>[item.enrollment_id,{notified:true,reasonCode:item.reason_code||''}])))
-  },[todaySession?.id,context.records.length])
+    setAbsentDetails(Object.fromEntries(records.filter(item=>item.status==='absent').map(item=>[item.enrollment_id,{notified:item.notice_status==='notified',reasonCode:item.reason_code||''}])))
+    setLateDetails(Object.fromEntries(records.filter(item=>item.status==='late').map(item=>[item.enrollment_id,{reasonCode:item.reason_code||''}])))
+  },[todaySession?.id,context.records])
 
   const visibleEnrollments=useMemo(()=>context.enrollments.filter(item=>fullName(item).toLowerCase().includes(search.trim().toLowerCase())),[context.enrollments,search])
   const absents=context.enrollments.filter(item=>!presentIds.has(item.id))
@@ -60,7 +57,7 @@ export default function TeacherPortal({ token, initialContext, onContext, onLogo
   function toggleLate(id){setLateIds(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next})}
   function toggleMakeup(id){setMakeupIds(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next})}
   function toggleAllPresent(){if(allPresent){setPresentIds(new Set());setLateIds(new Set());return}setPresentIds(new Set(context.enrollments.map(item=>item.id)));setLateIds(new Set())}
-  async function saveRoll(){setBusy(true);try{const result=await teacherAttendanceApi.submit(token,{scheduleId:selectedSchedule.id,sessionDate:context.today,presentEnrollmentIds:[...presentIds],lateEnrollmentIds:[...lateIds],absentDetails});updateContext(result.context);setMessage('Appel enregistré avec succès.')}catch(error){setMessage(error.message)}finally{setBusy(false)}}
+  async function saveRoll(){setBusy(true);try{const result=await teacherAttendanceApi.submit(token,{scheduleId:selectedSchedule.id,sessionDate:context.today,presentEnrollmentIds:[...presentIds],lateEnrollmentIds:[...lateIds],absentDetails,lateDetails});updateContext(result.context);setMessage('Appel enregistré avec succès.')}catch(error){setMessage(error.message)}finally{setBusy(false)}}
   async function cancelClass(reason){setBusy(true);try{const result=await teacherAttendanceApi.cancel(token,{scheduleId:selectedSchedule.id,sessionDate:context.today,reason});updateContext(result.context);setMessage('Le cours a été marqué comme non tenu.')}catch(error){setMessage(error.message)}finally{setBusy(false)}}
   async function saveMakeups(){setBusy(true);try{const result=await teacherAttendanceApi.completeMakeups(token,[...makeupIds]);updateContext(result.context);setMakeupIds(new Set());setMessage('Rattrapage enregistré.')}catch(error){setMessage(error.message)}finally{setBusy(false)}}
   async function logout(){try{await teacherAttendanceApi.logout(token)}finally{onLogout()}}
@@ -86,7 +83,7 @@ export default function TeacherPortal({ token, initialContext, onContext, onLogo
         {tab==='stats'&&<motion.section key="stats" className="teacher-panel teacher-stats" initial={{opacity:0,scale:.995}} animate={{opacity:1,scale:1}} exit={{opacity:0}}><header className="roll-header"><div><span>Résumé hebdomadaire</span><h2>{weekOffset===0?'Cette semaine':weekOffset===-1?'Semaine précédente':`Semaine du ${week.range.start}`}</h2><p>{new Intl.DateTimeFormat('fr-FR',{dateStyle:'medium'}).format(new Date(`${week.range.start}T12:00:00`))} – {new Intl.DateTimeFormat('fr-FR',{dateStyle:'medium'}).format(new Date(`${week.range.end}T12:00:00`))}</p></div><div className="week-nav"><button type="button" onClick={()=>setWeekOffset(value=>value-1)}><ChevronLeft/></button><button type="button" disabled={weekOffset===0} onClick={()=>setWeekOffset(value=>Math.min(0,value+1))}><ChevronRight/></button></div></header><WeekCards week={week}/>{week.missingSessions.length>0&&<div className="missing-rolls"><AlertCircle/><div><strong>{week.missingSessions.length} appel{week.missingSessions.length>1?'s':''} non renseigné{week.missingSessions.length>1?'s':''}</strong><p>Ces séances ne sont pas comptées comme des absences.</p></div></div>}</motion.section>}
       </AnimatePresence>
     </main>
-    {confirming&&<div className="teacher-dialog-backdrop" role="presentation"><motion.div className="teacher-dialog" initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} role="dialog" aria-modal="true"><Badge variant="warning"><UserX/>Vérification</Badge><h2>Confirmer l’appel</h2><p><strong>{presentIds.size} présents.</strong> Les {absents.length} autres seront marqués absents, non prévenus et sans motif.</p>{absents.length>0&&<div className="absent-review">{absents.map(item=>{const detail=absentDetails[item.id]||{};return <article key={item.id}><div><strong>{fullName(item)}</strong><button type="button" className={detail.notified?'active':''} onClick={()=>setAbsentDetails(current=>({...current,[item.id]:{...current[item.id],notified:!detail.notified}}))}>{detail.notified?'A prévenu':'Non prévenu'}</button></div>{detail.notified&&<select value={detail.reasonCode||''} onChange={event=>setAbsentDetails(current=>({...current,[item.id]:{...current[item.id],notified:true,reasonCode:event.target.value}}))}><option value="">Motif inconnu</option>{REASONS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>}</article>})}</div>}<div className="dialog-actions"><Button variant="secondary" onClick={()=>setConfirming(false)}>Retour</Button><Button onClick={saveRoll} disabled={busy}><Check/>{busy?'Enregistrement…':'Confirmer l’appel'}</Button></div></motion.div></div>}
+    {confirming&&<div className="teacher-dialog-backdrop" role="presentation"><motion.div className="teacher-dialog" initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} role="dialog" aria-modal="true"><Badge variant="warning"><UserX/>Vérification</Badge><h2>Confirmer l’appel</h2><p><strong>{presentIds.size} présents.</strong> Les {absents.length} autres seront marqués absents, non prévenus et sans motif.</p>{absents.length>0&&<div className="absent-review">{absents.map(item=>{const detail=absentDetails[item.id]||{};return <article key={item.id}><div><strong>{fullName(item)}</strong><button type="button" className={detail.notified?'active':''} onClick={()=>setAbsentDetails(current=>({...current,[item.id]:{...current[item.id],notified:!detail.notified}}))}>{detail.notified?'A prévenu':'Non prévenu'}</button></div>{<select aria-label={`Motif d’absence de ${fullName(item)}`} value={detail.reasonCode||''} onChange={event=>setAbsentDetails(current=>({...current,[item.id]:{...current[item.id],reasonCode:event.target.value}}))}><option value="">Motif inconnu</option>{ATTENDANCE_REASONS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>}</article>})}</div>}{lateIds.size>0&&<div className="absent-review">{context.enrollments.filter(item=>lateIds.has(item.id)).map(item=><article key={item.id}><strong>{fullName(item)} · Retard</strong><select aria-label={`Motif de retard de ${fullName(item)}`} value={lateDetails[item.id]?.reasonCode||''} onChange={event=>setLateDetails(current=>({...current,[item.id]:{...current[item.id],reasonCode:event.target.value}}))}><option value="">Motif non renseigné</option>{ATTENDANCE_REASONS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></article>)}</div>}<div className="dialog-actions"><Button variant="secondary" onClick={()=>setConfirming(false)}>Retour</Button><Button onClick={saveRoll} disabled={busy}><Check/>{busy?'Enregistrement…':'Confirmer l’appel'}</Button></div></motion.div></div>}
     {cancelling&&<div className="teacher-dialog-backdrop" role="presentation"><motion.div className="teacher-dialog" initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} role="dialog" aria-modal="true"><Badge variant="neutral"><AlertCircle/>Aucune absence</Badge><h2>Le cours n’a pas eu lieu ?</h2><p>Aucun apprenant ne sera marqué absent et la séance sera exclue du taux de présence.</p><div className="cancel-reasons">{['Décision de BEVA','Professeur indisponible','Jour férié','Incident technique','Autre'].map(reason=><Button key={reason} variant="secondary" onClick={()=>cancelClass(reason)} disabled={busy}>{reason}</Button>)}</div><Button variant="ghost" onClick={()=>setCancelling(false)}>Retour à l’appel</Button></motion.div></div>}
   </div>
 }
