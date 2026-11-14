@@ -27,14 +27,14 @@ export function NewStudentSheet({ open, onOpenChange, data, intakeId, mutate }) 
   return <Sheet open={open} onOpenChange={onOpenChange} title={tr('Nouvel étudiant','New student')} description={tr('Les quatre emplacements de formation seront créés automatiquement.','Four course slots will be created automatically.')}><form className="sheet-form" onSubmit={submit}><div className="form-grid"><Field label={tr('Nom','Last name')}><Input name="last_name" required /></Field><Field label={tr('Prénom(s)','First name(s)')}><Input name="first_name" required /></Field><Field label={tr('Téléphone','Phone')}><Input name="phone" inputMode="tel" /></Field><Field label={tr('Adresse e-mail','Email address')}><Input name="email" type="email" /></Field><Field label={tr('Date de naissance','Date of birth')}><Input name="birth_date" type="date" /></Field><Field label={tr('Vague','Cohort')}><Select name="intake_id" defaultValue={intakeId}>{data.intakes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field></div><Field label={tr('Première note de suivi','First follow-up note')}><Textarea name="notes" placeholder={tr('Facultatif : engagement de paiement, difficulté rencontrée…','Optional: payment commitment, issue encountered…')} /></Field><div className="sheet-actions"><Button type="button" variant="secondary" onClick={()=>onOpenChange(false)}>{tr('Annuler','Cancel')}</Button><Button disabled={busy}>{busy?tr('Enregistrement…','Saving…'):tr('Créer le profil','Create profile')}<ArrowRight/></Button></div></form></Sheet>
 }
 
-export function StudentSheet({ student, initialTab = 'info', followUpWeek, onClose, data, mutate, onPayment, onReceipt, onEditStudent, onManagePayment, onResumeStudent, onRelatedStudent }) {
+export function StudentSheet({ student, initialTab = 'info', onClose, data, mutate, onPayment, onReceipt, onEditStudent, onManagePayment, onResumeStudent, onRelatedStudent }) {
   const [note,setNote]=useState('')
   const [tab,setTab]=useState(initialTab)
   const [historyPeriod,setHistoryPeriod]=useState('all')
   const [historyFormation,setHistoryFormation]=useState('all')
   const [editingNote,setEditingNote]=useState(null)
   const [noteBusy,setNoteBusy]=useState(false)
-  useEffect(()=>{ setTab(initialTab); setNote(followUpWeek ? tr('Semaine du ','Week of ')+followUpWeek+'\n'+tr('Responsable : \nAction convenue : \nStatut : À contacter','Owner: \nAgreed action: \nStatus: Needs contact') : ''); setEditingNote(null); setHistoryPeriod('all'); setHistoryFormation('all') },[student?.id,initialTab,followUpWeek])
+  useEffect(()=>{ setTab(initialTab); setNote(''); setEditingNote(null); setHistoryPeriod('all'); setHistoryFormation('all') },[student?.id,initialTab])
   if(!student)return null
   const enrollments=data.enrollments.filter(item=>item.student_id===student.id).sort((a,b)=>a.slot-b.slot)
   const previousStudent=data.students.find(item=>item.id===student.returning_from_student_id)
